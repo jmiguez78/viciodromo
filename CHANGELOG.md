@@ -1,5 +1,12 @@
 # Registro de cambios
 
+## 0.37.1
+
+Mantenimiento: no cambia nada de lo que se ve.
+
+- **Electron 45.** La aplicación pasa de Electron 39 a 45 (Chromium 156 y Node.js 24), con las correcciones de seguridad de seis versiones. `npm audit` ya no informa vulnerabilidades altas; quedan seis moderadas de `minimatch`, dentro de Electron Builder, que sólo se usa para armar el ejecutable y no viaja en él.
+- **Repositorio.** Dependabot propone cada semana las actualizaciones de las dependencias y de las acciones de GitHub, y las pruebas fallan si aparece una vulnerabilidad alta. Desde Electron 42 el binario se descarga la primera vez que se ejecuta `electron`, no al instalar: las pruebas de interfaz ya no necesitan `ELECTRON_SKIP_BINARY_DOWNLOAD`.
+
 ## 0.37.0
 
 **Últimos juegos desde la barra de tareas.** Con Viciódromo anclado a la barra de tareas (o en el menú Inicio), el clic derecho sobre el ícono muestra «Jugados recientemente»: hasta ocho juegos, los mismos de «Seguí jugando», que se abren directamente desde ahí. Es la Jump List de Windows, como la de Steam.

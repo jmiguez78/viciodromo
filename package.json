@@ -1,7 +1,7 @@
 {
   "name": "viciodromo",
   "productName": "Viciódromo",
-  "version": "0.37.0",
+  "version": "0.37.1",
   "main": "src/electron-main.mjs",
   "private": true,
   "type": "module",
@@ -31,8 +31,8 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "^1.63.0",
-    "electron": "^39.2.7",
-    "electron-builder": "^26.0.12",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
     "prettier": "3.6.2"
   },
   "build": {

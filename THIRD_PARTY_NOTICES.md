@@ -6,7 +6,7 @@ Viciódromo se distribuye bajo la licencia MIT (ver [LICENSE](LICENSE)). Incluye
 
 | Componente | Versión | Licencia | Dónde está el texto completo |
 | --- | --- | --- | --- |
-| [Electron](https://www.electronjs.org/) (con Chromium y Node.js) | 39 | MIT; Chromium y Node.js, varias licencias abiertas | `LICENSE.electron.txt` y `LICENSES.chromium.html`, junto al ejecutable descomprimido |
+| [Electron](https://www.electronjs.org/) (con Chromium y Node.js) | 45 | MIT; Chromium y Node.js, varias licencias abiertas | `LICENSE.electron.txt` y `LICENSES.chromium.html`, junto al ejecutable descomprimido |
 | [steam-games-mcp](https://www.npmjs.com/package/steam-games-mcp) | 0.17.0 | MIT (© 2026 Grinv) | `node_modules/steam-games-mcp/LICENSE` |
 | [@modelcontextprotocol/core](https://github.com/modelcontextprotocol/typescript-sdk) y [@modelcontextprotocol/server](https://github.com/modelcontextprotocol/typescript-sdk) | 2.3.1 | Apache-2.0 (las contribuciones anteriores, MIT) | `node_modules/@modelcontextprotocol/*/LICENSE` |
 | [Zod](https://zod.dev/) | 4.6.7 | MIT (© 2025 Colin McDonnell) | `node_modules/zod/LICENSE` |

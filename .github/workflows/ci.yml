@@ -25,14 +25,14 @@ jobs:
         run: npm run check
       - name: Formato
         run: npx prettier --check src public test tools
+      - name: Vulnerabilidades altas o críticas en las dependencias
+        run: npm audit --audit-level=high
       - name: Pruebas
         run: npm test
 
   interfaz:
     name: Interfaz (Playwright)
     runs-on: ubuntu-24.04 # fijo: las capturas de referencia dependen de las fuentes del sistema
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

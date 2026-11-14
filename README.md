@@ -53,6 +53,10 @@ Al iniciar un juego, el launcher vigila su carpeta de instalación (en Windows, 
 
 **Tu actividad** suma las horas por semana (lo medido por el launcher), las últimas dos semanas (con las horas que informa Steam, también las jugadas fuera del launcher), los más jugados (horas de Steam o medidas), la racha de días seguidos y las últimas sesiones.
 
+## Últimos juegos desde la barra de tareas
+
+Anclá Viciódromo a la barra de tareas (clic derecho sobre su acceso directo → «Anclar a la barra de tareas»). El clic derecho sobre el ícono anclado muestra «Jugados recientemente», con hasta ocho juegos para abrir directamente, sin pasar por la biblioteca. Si acabás de actualizar, abrí Viciódromo una vez antes de anclarlo: en ese arranque ajusta su acceso directo para que Windows le asocie la lista.
+
 ## Listas propias
 
 Una lista es **manual** (los juegos que elegís, en el orden en que los agregás) o **automática** (guarda la búsqueda de la Biblioteca: colección, alcance, texto, filtros y orden; sus juegos se calculan cada vez con las mismas reglas). Se administran desde **Biblioteca → Listas** (crear, renombrar, mostrar u ocultar en Inicio, borrar con «Deshacer») y la paleta (Ctrl K). «Ver todo» en una fila de Inicio abre la Biblioteca con sólo esa lista, y la búsqueda y los filtros se aplican sobre ella. Se guardan en `preferences.json` (hasta 50 listas) y viajan con el respaldo.

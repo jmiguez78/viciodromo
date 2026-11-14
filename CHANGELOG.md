@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 0.37.0
+
+**Últimos juegos desde la barra de tareas.** Con Viciódromo anclado a la barra de tareas (o en el menú Inicio), el clic derecho sobre el ícono muestra «Jugados recientemente»: hasta ocho juegos, los mismos de «Seguí jugando», que se abren directamente desde ahí. Es la Jump List de Windows, como la de Steam.
+
+- Si Viciódromo ya está abierto, el juego se inicia en esa ventana; si está cerrado, se abre minimizado detrás del juego. El tiempo jugado se mide igual que al iniciarlo desde la biblioteca.
+- La lista se actualiza sola al iniciar un juego, al terminar una sesión y al sincronizar Steam. Los juegos con ejecutable propio muestran su ícono; el resto, el de Viciódromo. Lo que quites de la lista no vuelve a aparecer hasta que lo juegues de nuevo.
+- **Accesos directos.** Para que Windows asocie la lista al ícono anclado, al abrir el portable se ajustan los accesos directos del Escritorio y del menú Inicio que ya apuntan a Viciódromo (reciben el identificador de la aplicación). Si apuntaban a una versión anterior del `.exe` que ya no está en la carpeta, pasan a apuntar a la versión en uso. Los demás accesos directos no se tocan.
+- El menú aparece en la barra de tareas y en Inicio, no en el ícono del Escritorio: ahí Windows muestra siempre su propio menú.
+
 ## 0.36.2
 
 Primera versión publicada como Viciódromo.

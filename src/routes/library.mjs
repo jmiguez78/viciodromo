@@ -18,13 +18,7 @@ export function libraryRoutes(router, d) {
   });
   router.post('/api/scan', () => d.scan());
   router.post('/api/launch/:key', async ({ params }) => {
-    const games = (await d.library()).games;
-    // Una versión regional de Arcade se juega con su set, pero el tiempo se suma al juego.
-    const game =
-      games.find((item) => item.key === params.key) ??
-      (params.key.startsWith('arcade:')
-        ? games.find((item) => item.arcade?.versions.some((version) => `arcade:${version.id}` === params.key))
-        : null);
+    const game = await d.findGame(params.key);
     if (!game) throw notFound('Juego no encontrado.');
     return d.play(game, params.key);
   });

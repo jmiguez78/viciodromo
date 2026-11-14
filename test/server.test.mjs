@@ -196,6 +196,12 @@ test('informa el error si el ejecutable no existe, sin detener el servidor', asy
   assert.equal((await fetch(`${base}/api/health`)).status, 200);
 });
 
+test('la aplicación de escritorio puede listar y abrir juegos sin la interfaz (Jump List)', async () => {
+  assert.ok((await server.games.list()).some((game) => game.key === 'steam:10'));
+  await assert.rejects(server.games.play('steam:999'), { status: 404 });
+  await assert.rejects(server.games.play('gog galaxy:roto'), /No se pudo iniciar/);
+});
+
 test('la biblioteca resume las imágenes disponibles sin exponer rutas locales', async () => {
   const library = await (await fetch(`${base}/api/library`)).json();
   const steam = library.games.find((game) => game.key === 'steam:10');

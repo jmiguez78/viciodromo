@@ -88,7 +88,7 @@ Las claves de Steam e IGDB se cifran con Windows DPAPI para el usuario que las g
 
 ## Acceso directo
 
-Para desarrollo, el script `tools/create-desktop-shortcut.ps1` crea un acceso directo «Viciódromo (desarrollo)» en el Escritorio que inicia la interfaz local en el navegador. Con el portable no hace falta: alcanza con un acceso directo al `.exe`.
+Para desarrollo, el script `tools/create-desktop-shortcut.ps1` crea un acceso directo «Viciódromo (desarrollo)» en el Escritorio que inicia la interfaz local en el navegador. Con el portable no hace falta: alcanza con un acceso directo al `.exe`. Al abrirse, el portable le agrega a ese acceso directo el identificador de la aplicación (para la Jump List de la barra de tareas) y, si apuntaba a una versión anterior que ya no está en la carpeta, lo pasa a la versión en uso; queda anotado en el registro como «Acceso directo actualizado».
 
 ```powershell
 .\tools\create-desktop-shortcut.ps1

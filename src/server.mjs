@@ -784,7 +784,14 @@ async function diagnostics() {
   };
 }
 // Rutas de la API agrupadas por dominio (src/routes/). Lo que no es /api se sirve desde public/.
-export function createServer({ onSettingsChange, onLaunch, onGameExit, onRestart, listProcesses } = {}) {
+export function createServer({
+  onSettingsChange,
+  onLaunch,
+  onGameExit,
+  onRestart,
+  onLibraryChange,
+  listProcesses
+} = {}) {
   const router = createRouter();
   // Al cerrarse un juego medido: se guarda la sesión y la ventana vuelve al frente.
   async function finishSession(game, session) {
@@ -895,6 +902,17 @@ export function createServer({ onSettingsChange, onLaunch, onGameExit, onRestart
       await startArcade();
       return scanned;
     },
+    // Una versión regional de Arcade se juega con su set, pero el tiempo se suma al juego.
+    async findGame(key) {
+      const games = (await library()).games;
+      return (
+        games.find((item) => item.key === key) ??
+        (key.startsWith('arcade:')
+          ? games.find((item) => item.arcade?.versions.some((version) => `arcade:${version.id}` === key))
+          : null) ??
+        null
+      );
+    },
     async play(game, key) {
       let tracked = false;
       if (game.launch?.type === 'mame') {
@@ -911,6 +929,7 @@ export function createServer({ onSettingsChange, onLaunch, onGameExit, onRestart
       await updatePreferences((prefs) => {
         prefs.games[game.key] = { ...(prefs.games[game.key] ?? {}), lastLaunchedAt: new Date().toISOString() };
       });
+      onLibraryChange?.();
       // La aplicación de escritorio se minimiza para dejar el juego adelante.
       const minimize = (await appSettings()).minimizeOnLaunch;
       if (minimize) setTimeout(() => onLaunch?.(game), 1200);
@@ -961,7 +980,24 @@ export function createServer({ onSettingsChange, onLaunch, onGameExit, onRestart
       return send(res, status, JSON.stringify({ error: error.message || 'Error inesperado.' }));
     }
   });
+  // Para la aplicación de escritorio (Jump List de Windows): la lista de juegos y abrir uno sin pasar por la
+  // interfaz, que se entera por el aviso de biblioteca.
+  server.games = {
+    list: async () => (await library()).games,
+    async play(key) {
+      const game = await deps.findGame(key);
+      if (!game) throw notFound('Juego no encontrado.');
+      const result = await deps.play(game, key);
+      tasks.emit('library', { reason: 'launch' });
+      return { ...result, game };
+    }
+  };
+  // Una sesión medida o una sincronización de Steam cambian cuáles son los últimos juegos jugados.
+  const unsubscribe = tasks.subscribe((type) => {
+    if (type === 'library') onLibraryChange?.();
+  });
   server.on('close', () => {
+    unsubscribe();
     steam.close();
     tracker.stop();
   });

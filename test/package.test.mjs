@@ -21,3 +21,19 @@ test('el empaquetado conserva sólo los dos ejecutables más recientes', () => {
     ['Games Meta Launcher 0.34.0.exe']
   );
 });
+
+test('con instalador, portable y .blockmap se conservan las dos últimas versiones completas', () => {
+  const files = [
+    'Viciodromo-0.37.1.exe',
+    'Viciodromo-0.38.0.exe',
+    'Viciodromo-Setup-0.38.0.exe',
+    'Viciodromo-Setup-0.38.0.exe.blockmap',
+    'Viciodromo-0.39.0.exe',
+    'Viciodromo-Setup-0.39.0.exe',
+    'Viciodromo-Setup-0.39.0.exe.blockmap',
+    'latest.yml'
+  ];
+  assert.deepEqual(releasesToPrune(files), ['Viciodromo-0.37.1.exe']);
+  assert.deepEqual(versionOf('Viciodromo-Setup-0.38.0.exe.blockmap'), [0, 38, 0]);
+  assert.equal(versionOf('latest.yml'), null);
+});

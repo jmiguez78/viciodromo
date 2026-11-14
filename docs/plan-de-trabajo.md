@@ -21,7 +21,7 @@ Desde 0.36.0 la aplicación se llama **Viciódromo** y el repositorio es públic
 | --- | --- | --- |
 | 1. Juegos de cualquier PC | Buscador sin rutas de la PC de desarrollo: todas las unidades y el registro de Windows | Hecha en 0.35.0; falta confirmarla en la PC |
 | 2. Lo que no es código | Licencia, aviso legal, nombre, repositorio público, avisos de terceros y primera versión publicada | Hecha en 0.36.2 |
-| 3. Confianza | Prueba en otra PC desde cero, VirusTotal, firma o instalador | Pendiente |
+| 3. Confianza | Prueba en otra PC desde cero, VirusTotal, firma o instalador | Instalador y actualización automática en 0.38.0; faltan la prueba en otra PC, VirusTotal y la firma |
 
 De 0.33.0 a 0.34.0 se sumaron tus capturas y videos en la página de cada juego y en Inicio.
 

@@ -1,4 +1,4 @@
-# Publicación: al subir una etiqueta vX.Y.Z se arma el portable y se publica una versión en GitHub con las notas
+# Publicación: al subir una etiqueta vX.Y.Z se arman el instalador y el portable y se publica una versión en GitHub con las notas
 # de CHANGELOG.md. La aplicación consulta esa versión para avisar que hay una nueva (gml.releases en package.json).
 name: Publicar versión
 
@@ -24,7 +24,10 @@ jobs:
       - name: La etiqueta coincide con package.json
         shell: bash
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
-      - run: npm run package
+      - name: Instalador y portable
+        run: npm run package
+      - name: El portable abre
+        run: npm run smoke
       - name: Notas de la versión
         shell: bash
         run: node tools/release-notes.mjs "${GITHUB_REF_NAME}" > notas.md
@@ -32,4 +35,8 @@ jobs:
         with:
           name: Viciódromo ${{ github.ref_name }}
           body_path: notas.md
-          files: releases/*.exe
+          # latest.yml y el .blockmap son lo que consulta la actualización automática de la versión instalada.
+          files: |
+            releases/*.exe
+            releases/*.exe.blockmap
+            releases/latest.yml

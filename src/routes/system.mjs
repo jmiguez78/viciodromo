@@ -24,5 +24,11 @@ export function systemRoutes(router, d) {
     send(res, 200, JSON.stringify(await d.diagnostics(), null, 2));
     return HANDLED;
   });
-  router.get('/api/updates', ({ query }) => d.updates.check({ force: query.get('refresh') === '1' }));
+  // install: si esta copia se actualiza sola (la instalada) y cómo va la descarga (ver auto-update.mjs).
+  router.get('/api/updates', async ({ query }) => ({
+    ...(await d.updates.check({ force: query.get('refresh') === '1' })),
+    install: d.autoUpdate.state()
+  }));
+  router.post('/api/updates/download', () => d.autoUpdate.download());
+  router.post('/api/updates/install', () => d.autoUpdate.install());
 }

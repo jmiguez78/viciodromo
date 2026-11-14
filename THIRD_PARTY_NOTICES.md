@@ -10,6 +10,11 @@ Viciódromo se distribuye bajo la licencia MIT (ver [LICENSE](LICENSE)). Incluye
 | [steam-games-mcp](https://www.npmjs.com/package/steam-games-mcp) | 0.17.0 | MIT (© 2026 Grinv) | `node_modules/steam-games-mcp/LICENSE` |
 | [@modelcontextprotocol/core](https://github.com/modelcontextprotocol/typescript-sdk) y [@modelcontextprotocol/server](https://github.com/modelcontextprotocol/typescript-sdk) | 2.3.1 | Apache-2.0 (las contribuciones anteriores, MIT) | `node_modules/@modelcontextprotocol/*/LICENSE` |
 | [Zod](https://zod.dev/) | 4.6.7 | MIT (© 2025 Colin McDonnell) | `node_modules/zod/LICENSE` |
+| [electron-updater](https://www.electron.build/auto-update) y builder-util-runtime | 6.8.11 y 9.7.0 | MIT (© Vladimir Krivosheev y colaboradores de electron-builder) | `node_modules/electron-updater/LICENSE` |
+| Dependencias de electron-updater: fs-extra, jsonfile, universalify, js-yaml, lazy-val, lodash.escaperegexp, lodash.isequal, tiny-typed-emitter, debug, ms | — | MIT | `node_modules/<paquete>/LICENSE` |
+| graceful-fs, semver | 4.2.11 y 7.8.6 | ISC | `node_modules/<paquete>/LICENSE` |
+| argparse | 2.0.1 | Python-2.0 | `node_modules/argparse/LICENSE` |
+| sax | 1.6.1 | Blue Oak Model License 1.0.0 | `node_modules/sax/LICENSE.md` |
 | [Inter](https://github.com/rsms/inter) | — | SIL Open Font License 1.1 (© 2016 The Inter Project Authors) | `public/fonts/OFL-inter.txt` |
 | [Bricolage Grotesque](https://github.com/ateliertriay/bricolage) | — | SIL Open Font License 1.1 (© 2022 The Bricolage Grotesque Project Authors) | `public/fonts/OFL-bricolage-grotesque.txt` |
 | Íconos de trazo basados en [Lucide](https://lucide.dev/) | — | ISC (texto abajo) | Este archivo |

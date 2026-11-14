@@ -58,6 +58,7 @@ Los nombres se comparan sin tildes, marcas ni signos; si el nombre de la captura
 ## Dónde se guardan los datos
 
 - **Desarrollo** (`npm start`, `npm run desktop`): en `data/` dentro del proyecto (excluida del repositorio).
+- **Instalada:** en el perfil de Windows (`%APPDATA%\Viciódromo`), los mismos datos que usa el portable cuando no los tiene junto al `.exe`. El programa queda en `%LOCALAPPDATA%\Programs\viciodromo`. Desinstalar no borra los datos ni la tarea de la búsqueda nocturna (se quita desde el Programador de tareas).
 - **Portable:** en la carpeta `Viciódromo - datos` junto al `.exe` si existe o si es una PC sin datos previos; si la PC ya tenía datos, en el perfil de Windows (`%APPDATA%\Viciódromo`). **Configuración → Datos del portable** los copia junto al ejecutable. Las cachés del navegador interno quedan siempre en el perfil de Windows.
 - **Cambio de nombre (0.36.0):** si `%APPDATA%\Viciódromo` no tiene datos y `%APPDATA%\Games Meta Launcher` sí, se copian (menos las cachés pesadas de Chromium) y la carpeta vieja queda como respaldo. La carpeta `Games Meta Launcher - datos` junto al `.exe` se renombra a `Viciódromo - datos`, y la tarea «Games Meta Launcher - Indexación nocturna» se reemplaza por «Viciódromo - Búsqueda nocturna» con el mismo horario.
 
@@ -77,6 +78,10 @@ Los nombres se comparan sin tildes, marcas ni signos; si el nombre de la captura
 Los datos personales se asocian al identificador estable de cada juego: buscar juegos de nuevo no los borra. La fecha de última vez jugado se actualiza al iniciar un juego desde Viciódromo. Las sesiones (con su duración) se miden cuando el juego se abre desde el launcher: Arcade viendo cerrarse a MAME y, en Windows, el resto vigilando los procesos que corren desde la carpeta de instalación del juego. Lo jugado fuera del launcher sólo cuenta si lo informa Steam.
 
 **Configuración → Respaldo** exporta e importa favoritos, notas, etiquetas, portadas propias, rutas personalizadas y listas.
+
+## Versiones nuevas
+
+La aplicación consulta la última publicación en GitHub como mucho una vez por día. El portable avisa y lleva a las novedades. La versión instalada, además, ofrece **Actualizar** en **Configuración → Versión**: descarga el instalador nuevo (se comprueba contra la suma publicada en `latest.yml`), y **Reiniciar y actualizar** lo instala sin preguntar y vuelve a abrir. Si no se reinicia, se instala al cerrar. El resultado queda en el registro de diagnóstico, bajo «versión».
 
 ## Diagnóstico
 

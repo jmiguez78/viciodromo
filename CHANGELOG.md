@@ -1,5 +1,21 @@
 # Registro de cambios
 
+## 0.38.0
+
+**Instalador y actualización automática.** Además del portable, cada versión trae un instalador para Windows: `Viciodromo-Setup-<versión>.exe`.
+
+- **Instalador.** Se instala para tu usuario, sin permisos de administrador, con accesos directos en el Escritorio y en el menú Inicio. Usa los mismos datos que el portable cuando están en el perfil de Windows (`%APPDATA%\Viciódromo`); desinstalar no los borra.
+- **La versión instalada se actualiza sola.** Cuando hay una versión nueva, **Configuración → Versión** ofrece **Actualizar**: la descarga con su avance y, al terminar, **Reiniciar y actualizar** la instala y vuelve a abrir Viciódromo. Si no reiniciás, se instala al cerrar. Nada se descarga sin que lo pidas.
+- **El portable sigue igual:** avisa la versión nueva y lleva a las novedades para bajarla a mano.
+- Ni el instalador ni el portable están firmados todavía: Windows puede mostrar «Windows protegió tu PC» la primera vez.
+- Al desinstalar queda la tarea «Viciódromo - Búsqueda nocturna» si la habías programado: se quita desde el Programador de tareas de Windows.
+
+Para el desarrollo:
+
+- **Prueba de humo del ejecutable** (`npm run smoke`): abre el `.exe` con `--smoke=<carpeta>`, con los datos en una carpeta temporal y sin tocar los de la PC ni la tarea nocturna, y comprueba que la interfaz arranca, recibe la biblioteca y no deja errores. En GitHub corre sobre el portable y sobre la versión instalada antes de publicar.
+- Abrir la aplicación con `npm run desktop` ya no reprograma la búsqueda nocturna hacia el `electron.exe` del proyecto.
+- `npm run package` arma instalador y portable; en `releases/` quedan las dos últimas versiones completas.
+
 ## 0.37.1
 
 Mantenimiento: no cambia nada de lo que se ve.

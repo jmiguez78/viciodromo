@@ -13,6 +13,9 @@ const PREFERRED_PORT = 47321;
 let server;
 let window;
 const scanMode = process.argv.includes('--scan');
+// Prueba de humo («--smoke=<carpeta>», ver tools/smoke.mjs): abre la interfaz con los datos en esa carpeta, sin
+// tocar los de la PC, anota el resultado en smoke.json y termina.
+const smokeDir = process.argv.find((arg) => arg.startsWith('--smoke='))?.slice('--smoke='.length) || null;
 // Abierta desde la Jump List («--launch=<clave>»): el juego se inicia apenas la aplicación está lista.
 let pendingLaunch = launchKeyFromArgs(process.argv);
 const isWindows = process.platform === 'win32';
@@ -22,7 +25,9 @@ if (isWindows) app.setAppUserModelId(APP_USER_MODEL_ID);
 // Portable (B8): los datos pueden vivir junto al .exe (ver portable.mjs). Se decide antes de que Electron use la
 // carpeta; las cachés de Chromium se quedan en AppData de cada PC.
 // Sin await: tiene que pasar antes del evento «ready».
-{
+if (smokeDir) {
+  app.setPath('userData', path.resolve(smokeDir));
+} else {
   const defaultDir = app.getPath('userData');
   // Antes de la 0.36.0 la aplicación se llamaba Games Meta Launcher: sus datos se copian a la carpeta nueva.
   const appData = app.getPath('appData');
@@ -171,6 +176,106 @@ const callbacks = {
   }
 };
 
+const windowOptions = () => ({
+  width: 1360,
+  height: 900,
+  minWidth: 920,
+  minHeight: 650,
+  title: 'Viciódromo',
+  icon: path.join(root, 'public', 'brand', 'icon-256.png'),
+  // La ventana se muestra recién cuando la interfaz pintó su primer cuadro, con el fondo del tema:
+  // así no hay un destello blanco al abrir.
+  show: false,
+  backgroundColor: nativeTheme.shouldUseDarkColors ? '#07080c' : '#f4f5f8',
+  autoHideMenuBar: true,
+  webPreferences: {
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: true,
+    webSecurity: true,
+    navigateOnDragDrop: false,
+    spellcheck: false
+  }
+});
+
+// Prueba de humo: el servidor (sin tarea nocturna ni consultas a internet) y la misma ventana, sin mostrarla.
+// Pasa si la interfaz arranca, recibe la biblioteca y no deja errores en la consola.
+async function runSmoke() {
+  const dir = app.getPath('userData');
+  process.env.GML_DATA_DIR = dir;
+  process.env.GML_OFFLINE = '1';
+  const result = {
+    ok: false,
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    packaged: app.isPackaged,
+    errors: []
+  };
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    result.ok = result.errors.length === 0;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'smoke.json'), JSON.stringify(result, null, 2));
+    app.exit(result.ok ? 0 : 1);
+  };
+  const fail = (message) => {
+    result.errors.push(message);
+    finish();
+  };
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  setTimeout(() => fail('La interfaz no arrancó en 60 segundos.'), 60000);
+  try {
+    const { createServer } = await import('./server.mjs');
+    const instance = createServer({});
+    await new Promise((resolve, reject) => {
+      instance.once('error', reject);
+      instance.listen(0, '127.0.0.1', resolve);
+    });
+    const smokeWindow = new BrowserWindow(windowOptions());
+    smokeWindow.webContents.on('console-message', (event) => {
+      if (event.level === 'error') result.errors.push('Consola: ' + event.message);
+    });
+    smokeWindow.webContents.on('render-process-gone', (_event, details) =>
+      fail('La interfaz se cerró: ' + details.reason)
+    );
+    await smokeWindow.loadURL(`http://127.0.0.1:${instance.address().port}`);
+    const started = Date.now();
+    while (Date.now() - started < 30000) {
+      result.page = await smokeWindow.webContents.executeJavaScript(
+        `fetch('/api/library').then(async (response) => ({
+          title: document.title,
+          started: Boolean(window.GML),
+          text: document.body.innerText.trim().length,
+          library: response.status,
+          games: response.ok ? (await response.json()).games.length : null
+        }))`
+      );
+      if (result.page.started && result.page.text > 100 && result.page.library === 200) break;
+      await wait(500);
+    }
+    if (!result.page?.started) result.errors.push('La interfaz no terminó de iniciarse.');
+    if (result.page?.library !== 200) result.errors.push('La biblioteca respondió ' + result.page?.library + '.');
+    if (!(result.page?.text > 100)) result.errors.push('La ventana quedó vacía.');
+    // En el ejecutable, además: que el módulo de actualización automática cargue (lo usa la versión instalada).
+    if (app.isPackaged) {
+      try {
+        const { default: updaterPackage } = await import('electron-updater');
+        result.updater = updaterPackage.autoUpdater.isUpdaterActive();
+      } catch (error) {
+        result.errors.push('electron-updater: ' + error.message);
+      }
+    }
+    // Un momento más, por si algún error aparece después del primer cuadro.
+    await wait(2000);
+    instance.close();
+    finish();
+  } catch (error) {
+    fail(error.stack ?? String(error));
+  }
+}
+
 async function openWindow() {
   process.env.GML_DATA_DIR = app.getPath('userData');
   const { startServer, appSettings } = await import('./server.mjs');
@@ -181,6 +286,18 @@ async function openWindow() {
   };
   callbacks.onSettingsChange = applyTheme;
   applyTheme(await appSettings());
+  // La versión instalada se actualiza sola; el portable y el desarrollo sólo avisan (ver auto-update.mjs).
+  if (isWindows && app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE) {
+    try {
+      const [{ default: updaterPackage }, { createAutoUpdate }] = await Promise.all([
+        import('electron-updater'),
+        import('./auto-update.mjs')
+      ]);
+      callbacks.autoUpdate = createAutoUpdate({ updater: updaterPackage.autoUpdater, log });
+    } catch (error) {
+      log('warn', 'versión', `Actualización automática no disponible: ${error.message}`);
+    }
+  }
   server = await listen(startServer, PREFERRED_PORT);
   const origin = `http://127.0.0.1:${server.address().port}`;
   log('info', 'app', `Inicio de la versión ${app.getVersion()} en ${origin}`);
@@ -191,27 +308,7 @@ async function openWindow() {
   );
   session.defaultSession.setPermissionCheckHandler((_contents, permission) => permission === 'fullscreen');
 
-  window = new BrowserWindow({
-    width: 1360,
-    height: 900,
-    minWidth: 920,
-    minHeight: 650,
-    title: 'Viciódromo',
-    icon: path.join(root, 'public', 'brand', 'icon-256.png'),
-    // La ventana se muestra recién cuando la interfaz pintó su primer cuadro, con el fondo del tema:
-    // así no hay un destello blanco al abrir.
-    show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#07080c' : '#f4f5f8',
-    autoHideMenuBar: true,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      webSecurity: true,
-      navigateOnDragDrop: false,
-      spellcheck: false
-    }
-  });
+  window = new BrowserWindow(windowOptions());
   // Abierta desde la Jump List para jugar: la ventana queda minimizada, detrás del juego.
   const startMinimized = Boolean(pendingLaunch);
   window.once('ready-to-show', () => (startMinimized ? window.minimize() : window.show()));
@@ -239,7 +336,9 @@ async function openWindow() {
   }
 }
 
-if (scanMode) {
+if (smokeDir) {
+  app.whenReady().then(runSmoke);
+} else if (scanMode) {
   app.whenReady().then(runScan);
 } else if (!app.requestSingleInstanceLock()) {
   // Ya hay una ventana abierta: esa pasa al frente (second-instance) y esta termina.

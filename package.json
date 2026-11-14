@@ -1,7 +1,7 @@
 {
   "name": "viciodromo",
   "productName": "Viciódromo",
-  "version": "0.37.1",
+  "version": "0.38.0",
   "main": "src/electron-main.mjs",
   "private": true,
   "type": "module",
@@ -26,7 +26,8 @@
     "test:ui": "playwright test -c test/ui/playwright.config.mjs",
     "verify": "npm run check && npm test && npm run test:ui",
     "desktop": "electron .",
-    "package": "node tools/package.mjs"
+    "package": "node tools/package.mjs",
+    "smoke": "node tools/smoke.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
@@ -54,16 +55,36 @@
     ],
     "asar": false,
     "win": {
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "directories": {
       "output": "dist"
     },
     "portable": {
+      "artifactName": "Viciodromo-${version}.${ext}",
       "splashImage": "build/splash.bmp"
-    }
+    },
+    "nsis": {
+      "artifactName": "Viciodromo-Setup-${version}.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "Viciódromo",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jmiguez78",
+        "repo": "viciodromo"
+      }
+    ]
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "steam-games-mcp": "0.17.0"
   }
 }

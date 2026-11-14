@@ -2,14 +2,15 @@
 
 **El lugar donde se vicia.** Todos tus juegos de PC en una sola biblioteca: Steam, Epic Games, Xbox / Microsoft Store, Ubisoft Connect, EA app, GOG Galaxy y arcade (MAME), con tu tiempo jugado, tus capturas y un modo sala para jugar en la TV con el mando.
 
-Es un lanzador para Windows, portable (no se instala) y sin publicidad ni telemetría. Está en español. Hasta la versión 0.35.0 se llamó Games Meta Launcher.
+Es un lanzador para Windows, con instalador o portable (sin instalar), y sin publicidad ni telemetría. Está en español. Hasta la versión 0.35.0 se llamó Games Meta Launcher.
 
 ## Descarga y requisitos
 
 - **Windows 10 u 11 de 64 bits.** No corre en Windows ARM, Linux ni Steam Deck.
-- Bajá `Viciodromo-<versión>.exe` desde [Releases](https://github.com/jmiguez78/viciodromo/releases) y abrilo. No necesita instalación ni permisos de administrador; trae todo lo que necesita.
-- El ejecutable no está firmado: la primera vez, Windows puede mostrar «Windows protegió tu PC». Tocá **Más información → Ejecutar de todas formas**.
-- La primera apertura tarda unos segundos mientras se descomprime (se ve una imagen de bienvenida).
+- Bajá uno de los dos desde [Releases](https://github.com/jmiguez78/viciodromo/releases):
+  - **Instalador** (`Viciodromo-Setup-<versión>.exe`): se instala para tu usuario, sin permisos de administrador, deja accesos directos y **se actualiza solo** desde Configuración.
+  - **Portable** (`Viciodromo-<versión>.exe`): no se instala; se abre desde donde lo guardes (también un pendrive) y avisa cuando hay una versión nueva para bajarla a mano. La primera apertura tarda unos segundos mientras se descomprime (se ve una imagen de bienvenida).
+- Ninguno de los dos está firmado: la primera vez, Windows puede mostrar «Windows protegió tu PC». Tocá **Más información → Ejecutar de todas formas**.
 
 ## Qué hace
 
@@ -128,7 +129,8 @@ Se necesita Node.js 22 y `npm install`. La interfaz es HTML, CSS y JavaScript si
 | `npm run test:ui` | Pruebas de interfaz con Playwright: pantallas, flujos, accesibilidad y capturas de referencia.           |
 | `npm run verify`  | Todo lo anterior, como la integración continua. Conviene correrlo antes de etiquetar una versión.        |
 | `npm run format`  | Formatea el código con Prettier.                                                                         |
-| `npm run package` | Genera el portable de Windows y lo guarda en `releases/`. Conserva sólo la versión actual y la anterior. |
+| `npm run package` | Genera el instalador y el portable de Windows en `releases/`. Conserva sólo la versión actual y la anterior. |
+| `npm run smoke`   | Abre el portable de `releases/` en modo de prueba (datos en una carpeta temporal) y comprueba que arranca. |
 
 La primera vez, `npx playwright install chromium` descarga el navegador de las pruebas de interfaz. Si un cambio visual es intencional, `npm run test:ui -- --update-snapshots` actualiza las capturas de referencia (`test/ui/capturas/`).
 
@@ -155,7 +157,7 @@ Buscar juegos, sincronizar Steam, indexar los dos MAME, Wikipedia e IGDB pasan p
 
 Se usa versionado semántico (`MAYOR.MENOR.PARCHE`) y cada versión se marca con una etiqueta de Git (`v0.36.0`). Los ejecutables no se archivan en el repositorio: una versión anterior se reconstruye con `git checkout v0.36.0` y `npm run package`.
 
-En GitHub, cada push corre las pruebas en Windows y las de interfaz en Linux y deja el portable como artefacto (`.github/workflows/ci.yml`). Al subir una etiqueta `vX.Y.Z`, `release.yml` arma el portable y publica la versión con sus notas del registro de cambios; la aplicación consulta esa publicación (`gml.releases` en `package.json`) y avisa cuando hay una más nueva.
+En GitHub, cada push corre las pruebas en Windows y las de interfaz en Linux y arma el instalador y el portable, comprueba que los dos abren y los deja como artefacto (`.github/workflows/ci.yml`). Al subir una etiqueta `vX.Y.Z`, `release.yml` los arma, los prueba y publica la versión con sus notas del registro de cambios, junto con `latest.yml` y el `.blockmap` que usa la actualización automática. La aplicación consulta esa publicación (`gml.releases` en `package.json`) y avisa cuando hay una más nueva; la versión instalada, además, la descarga y la instala.
 
 ## Aviso legal y créditos
 

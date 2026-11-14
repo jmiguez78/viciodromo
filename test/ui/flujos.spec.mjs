@@ -97,6 +97,45 @@ test('Configuración avisa una versión nueva y ofrece ver las novedades', async
   await expect(page.locator('#check-updates')).toHaveText('Ver novedades');
 });
 
+test('la versión instalada descarga la versión nueva y ofrece reiniciar para instalarla', async ({ page }) => {
+  // Lo que respondería la versión instalada: nada pedido → descargando → lista.
+  let phase = 'idle';
+  const posts = [];
+  await page.route('**/api/updates*', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        enabled: true,
+        current: '0.38.0',
+        available: true,
+        latest: '0.39.0',
+        newer: true,
+        url: 'https://github.com/x/y/releases/tag/v0.39.0',
+        install: { supported: true, phase, percent: phase === 'ready' ? 100 : 40, version: '0.39.0', error: null }
+      })
+    })
+  );
+  await page.route('**/api/updates/*', (route) => {
+    posts.push(new URL(route.request().url()).pathname);
+    if (route.request().url().endsWith('/download')) phase = 'downloading';
+    return route.fulfill({ contentType: 'application/json', body: '{"ok":true}' });
+  });
+  await openApp(page);
+  await show(page, 'settings');
+  const button = page.locator('#check-updates');
+  await expect(button).toHaveText('Actualizar');
+  await button.click();
+  await expect(page.locator('#update-status')).toHaveText('Versión 0.38.0. Descargando la versión nueva… 40 %.');
+  await expect(button).toBeDisabled();
+  phase = 'ready';
+  await expect(page.locator('#update-status')).toHaveText(
+    'Versión 0.38.0. La versión 0.39.0 está lista para instalar.'
+  );
+  await expect(button).toHaveText('Reiniciar y actualizar');
+  await button.click();
+  await expect.poll(() => posts).toEqual(['/api/updates/download', '/api/updates/install']);
+});
+
 test('listas propias: crear desde un juego, verla en Inicio y en la Biblioteca, y una automática', async ({ page }) => {
   await openApp(page);
   await openGame(page, 'steam:900000');

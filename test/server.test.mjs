@@ -444,6 +444,16 @@ test('sin repositorio de publicaciones, el aviso de versión nueva queda apagado
   assert.ok('enabled' in updates);
 });
 
+test('fuera de la versión instalada, la actualización automática queda apagada y lo explica', async () => {
+  const updates = await (await fetch(`${base}/api/updates`)).json();
+  assert.deepEqual(updates.install, { supported: false });
+  for (const action of ['download', 'install']) {
+    const response = await fetch(`${base}/api/updates/${action}`, { method: 'POST' });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /no se actualiza sola/);
+  }
+});
+
 test('una imagen que todavía se descarga responde 503 sin retener la conexión', async () => {
   const { createRouter } = await import('../src/http.mjs');
   const { libraryRoutes } = await import('../src/routes/library.mjs');

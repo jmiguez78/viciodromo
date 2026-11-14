@@ -55,6 +55,7 @@ jobs:
           # Las carpetas empiezan con punto: sin esto, upload-artifact las omite y no sube nada.
           include-hidden-files: true
 
+  # El nombre del trabajo es un chequeo obligatorio de main: si cambia, hay que cambiarlo en la protección de la rama.
   ejecutable:
     name: Ejecutable portable
     needs: [windows, interfaz]
@@ -66,7 +67,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run package
+      - name: Instalador y portable
+        run: npm run package
+      - name: El portable abre
+        run: npm run smoke
+      - name: El instalador instala y la versión instalada abre
+        shell: pwsh
+        run: |
+          $instalador = Get-ChildItem releases -Filter 'Viciodromo-Setup-*.exe' | Select-Object -First 1
+          Start-Process -FilePath $instalador.FullName -ArgumentList '/S' -Wait
+          $instalado = Get-ChildItem "$env:LOCALAPPDATA\Programs\viciodromo" -Filter '*.exe' |
+            Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
+          if (-not $instalado) { throw 'El instalador no dejó el programa en Programs\viciodromo.' }
+          node tools/smoke.mjs $instalado.FullName
       - uses: actions/upload-artifact@v6
         with:
           name: viciodromo

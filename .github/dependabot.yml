@@ -1,6 +1,7 @@
 # Dependabot: una vez por semana propone las actualizaciones de las dependencias y de las acciones de GitHub.
 # Cada propuesta pasa por las mismas pruebas que cualquier otro cambio.
-# Si cambia Electron, steam-games-mcp, @modelcontextprotocol/* o Zod, actualizar su versión en THIRD_PARTY_NOTICES.md.
+# Si cambia Electron, steam-games-mcp, electron-updater o alguna de sus dependencias, actualizar su versión en
+# THIRD_PARTY_NOTICES.md.
 version: 2
 updates:
   - package-ecosystem: npm

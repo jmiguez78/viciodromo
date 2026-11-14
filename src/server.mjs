@@ -29,6 +29,7 @@ import { integrationRoutes } from './routes/integrations.mjs';
 import { systemRoutes } from './routes/system.mjs';
 import { screenshotRoutes } from './routes/screenshots.mjs';
 import { createUpdates } from './updates.mjs';
+import { noAutoUpdate } from './auto-update.mjs';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 
@@ -583,7 +584,8 @@ async function configureSchedule(time) {
 // Al abrir la aplicación: si la tarea existe pero apunta a otro ejecutable (otra versión, o uno ya borrado),
 // se vuelve a crear con el mismo horario y este ejecutable.
 export async function repairSchedule() {
-  if (process.platform !== 'win32' || !process.versions.electron) return null;
+  // En desarrollo (`electron .`) no: la tarea de la aplicación quedaría apuntando al electron.exe del proyecto.
+  if (process.platform !== 'win32' || !process.versions.electron || process.defaultApp) return null;
   const valid = (time) => /^([01]\d|2[0-3]):[0-5]\d$/.test(time ?? '');
   const current = await schedule();
   if (!current.configured) {
@@ -790,7 +792,8 @@ export function createServer({
   onGameExit,
   onRestart,
   onLibraryChange,
-  listProcesses
+  listProcesses,
+  autoUpdate = noAutoUpdate
 } = {}) {
   const router = createRouter();
   // Al cerrarse un juego medido: se guarda la sesión y la ventana vuelve al frente.
@@ -891,6 +894,7 @@ export function createServer({
     configureSchedule,
     diagnostics,
     updates,
+    autoUpdate,
     clientLog,
     async scan() {
       const scanned = await tasks.enqueue('scan', 'Buscar juegos', runScan, {

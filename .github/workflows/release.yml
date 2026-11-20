@@ -31,7 +31,7 @@ jobs:
       - name: Notas de la versión
         shell: bash
         run: node tools/release-notes.mjs "${GITHUB_REF_NAME}" > notas.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: Viciódromo ${{ github.ref_name }}
           body_path: notas.md

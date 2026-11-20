@@ -1,9 +1,13 @@
-# Capturas de referencia: cuando un cambio visual es intencional, este flujo (manual, desde Actions → «Actualizar
-# capturas» → Run workflow, eligiendo la rama) las vuelve a sacar en la misma máquina que las pruebas (Ubuntu 24.04:
-# las capturas dependen de sus fuentes), las sube a la rama y vuelve a lanzar «Pruebas», que arma el ejecutable.
+# Capturas de referencia: cuando un cambio visual es intencional, este flujo las vuelve a sacar en la misma máquina
+# que las pruebas (Ubuntu 24.04: las capturas dependen de sus fuentes), las sube a la rama y vuelve a lanzar
+# «Pruebas», que arma el ejecutable. Se lanza de dos formas:
+# - con un push a una rama cuyo último commit diga [capturas] en el mensaje;
+# - a mano: Actions → «Actualizar capturas» → Run workflow (el botón aparece cuando este archivo ya está en main).
 name: Actualizar capturas
 
 on:
+  push:
+    branches-ignore: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,6 +18,8 @@ jobs:
   capturas:
     name: Capturas de referencia
     runs-on: ubuntu-24.04
+    # En un push, sólo si se pidió con [capturas] (el commit que sube este flujo no lo lleva: no se repite).
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[capturas]')
     steps:
       - name: No en main
         if: github.ref_name == 'main'

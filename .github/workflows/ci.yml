@@ -17,7 +17,7 @@ jobs:
     name: Código y pruebas en Windows
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -36,7 +36,7 @@ jobs:
     name: Interfaz (Playwright)
     runs-on: ubuntu-24.04 # fijo: las capturas de referencia dependen de las fuentes del sistema
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -63,7 +63,7 @@ jobs:
     needs: [windows, interfaz]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: 22

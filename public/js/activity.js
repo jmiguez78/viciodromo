@@ -15,9 +15,15 @@ const shortDate = (day) =>
 function tiles(data) {
   const holder = document.querySelector('#activity-summary');
   holder.replaceChildren();
+  const onlyHere = data.playtime === 'viciodromo';
   [
+    ['Tiempo total', hoursText(data.totalSeconds), onlyHere ? 'sólo desde Viciódromo' : 'con las horas de Steam'],
     ['Esta semana', hoursText(data.thisWeekSeconds), 'medido por el launcher'],
-    ['Últimas dos semanas', hoursText(data.recentSeconds), 'con las horas que informa Steam'],
+    [
+      'Últimas dos semanas',
+      hoursText(data.recentSeconds),
+      onlyHere ? 'medido por el launcher' : 'con las horas que informa Steam'
+    ],
     [
       'Racha',
       plural(data.streak.current, 'día', 'días'),

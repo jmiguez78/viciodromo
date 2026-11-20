@@ -199,6 +199,12 @@ document.querySelector('#refresh').onclick = async (event) => {
 
 document.querySelector('#open-diagnostics').onclick = () => showPage('diagnostics');
 
+// Al cambiar la configuración de horas jugadas se redibuja lo que las muestra.
+window.addEventListener('gml-playtime', () => {
+  if (!state.games.length) return;
+  renderAll();
+  if (state.page === 'activity') loadActivity();
+});
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();

@@ -44,6 +44,8 @@ export function preferencesRoutes(router, d) {
     if ('theme' in update) patch.theme = check.oneOf(update.theme, d.themes, 'Tema no válido.');
     if ('minimizeOnLaunch' in update)
       patch.minimizeOnLaunch = check.boolean(update.minimizeOnLaunch, 'Valor no válido para minimizar al jugar.');
+    if ('playtime' in update)
+      patch.playtime = check.oneOf(update.playtime, d.playtimeModes, 'Opción no válida para las horas jugadas.');
     if ('onboardingDismissed' in update)
       patch.onboardingDismissed = check.boolean(update.onboardingDismissed, 'Valor no válido.');
     if (!Object.keys(patch).length) throw badRequest('No hay cambios para guardar.');

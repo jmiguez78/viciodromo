@@ -703,6 +703,7 @@ function trustedRequest(req) {
   return req.method === 'GET' || !origin || origin.toLowerCase() === `http://${host}`.toLowerCase();
 }
 const themes = ['system', 'light', 'dark'];
+const playtimeModes = ['all', 'viciodromo'];
 export async function appSettings() {
   const settings = (await preferences()).settings ?? {};
   // Oscuro primero: sin una elección guardada, la aplicación usa el tema oscuro.
@@ -711,7 +712,9 @@ export async function appSettings() {
     theme: themes.includes(settings.theme) ? settings.theme : 'dark',
     minimizeOnLaunch: settings.minimizeOnLaunch !== false,
     // «Primeros pasos» en Inicio: oculto si se descartó.
-    onboardingDismissed: settings.onboardingDismissed === true
+    onboardingDismissed: settings.onboardingDismissed === true,
+    // Horas jugadas: 'all' suma lo que informan otras plataformas (Steam); 'viciodromo', sólo lo medido acá.
+    playtime: playtimeModes.includes(settings.playtime) ? settings.playtime : 'all'
   };
 }
 // Sesiones medidas por el launcher: Arcade (abre y ve cerrarse a MAME) y, en Windows, cualquier juego con
@@ -822,6 +825,7 @@ export function createServer({
     readCover,
     appSettings,
     themes,
+    playtimeModes,
     steam,
     igdb,
     arcade,
@@ -876,8 +880,8 @@ export function createServer({
       };
     },
     async activity(now = Date.now()) {
-      const [sessions, catalog] = await Promise.all([sessionLog.list(), library()]);
-      return buildActivity({ sessions, games: catalog.games, now });
+      const [sessions, catalog, settings] = await Promise.all([sessionLog.list(), library(), appSettings()]);
+      return buildActivity({ sessions, games: catalog.games, now, playtime: settings.playtime });
     },
     gameArt,
     screenshots,

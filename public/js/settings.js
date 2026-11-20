@@ -134,11 +134,18 @@ export function applyTheme(theme) {
   });
 }
 
+// Horas jugadas: se aplica a toda la interfaz (tarjetas, Biblioteca, ficha, modo sala) y se redibuja.
+function applyPlaytime(mode) {
+  const current = GMLShelves.setPlaytimeMode(mode);
+  document.querySelector('#playtime-external').checked = current !== 'viciodromo';
+  window.dispatchEvent(new CustomEvent('gml-playtime', { detail: { mode: current } }));
+}
 export async function loadSettings() {
   try {
     const settings = await request('/api/settings');
     applyTheme(settings.theme);
     document.querySelector('#minimize-on-launch').checked = settings.minimizeOnLaunch !== false;
+    applyPlaytime(settings.playtime);
   } catch {
     applyTheme('dark');
   }
@@ -356,6 +363,26 @@ export function setup() {
   document.querySelector('#portable-copy').onclick = copyToPortable;
   window.addEventListener('gml-tasks', refreshFromTasks);
   document.querySelector('#big-screen').onchange = (event) => GMLGamepad.setBigScreen(event.currentTarget.checked);
+  document.querySelector('#playtime-external').onchange = async (event) => {
+    const input = event.currentTarget;
+    try {
+      const settings = await request('/api/settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ playtime: input.checked ? 'all' : 'viciodromo' })
+      });
+      applyPlaytime(settings.playtime);
+      notify(
+        input.checked
+          ? 'Las horas jugadas suman lo que informan otras plataformas.'
+          : 'Las horas jugadas muestran sólo lo jugado desde Viciódromo.',
+        { type: 'success' }
+      );
+    } catch (error) {
+      input.checked = !input.checked;
+      notifyError(error);
+    }
+  };
   document.querySelector('#minimize-on-launch').onchange = async (event) => {
     const input = event.currentTarget;
     try {

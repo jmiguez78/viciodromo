@@ -3,6 +3,8 @@
 // Y = buscar (Control+K). En el modo sala los botones pasan a ser teclas fijas (ver couchKeys).
 // LB / RB = sección anterior o siguiente, Menú = pantalla grande.
 // Donde ninguna pantalla usa las flechas, el foco se mueve al elemento más cercano en esa dirección.
+// Sólo se escucha al mando con la ventana de Viciódromo en primer plano: mientras se juega (el juego tiene el
+// foco, aunque Viciódromo siga visible en otro monitor) el mando es del juego y acá no hace nada.
 (function (root) {
   // Elige, entre rectángulos candidatos, el más cercano en la dirección pedida (navegación espacial).
   // Se descartan los que no están del lado correcto; se premia la alineación con el eje del movimiento.
@@ -146,9 +148,17 @@
       up: pad.axes[1] < -0.5,
       down: pad.axes[1] > 0.5
     };
+    const focused = windowFocused();
     for (const [name, index] of Object.entries(BUTTONS)) {
       const down = pressed(index) || Boolean(stick[name]);
       const since = held.get(name);
+      if (!focused || since?.ignored) {
+        // Sin foco, todo lo apretado queda «ignorado» hasta soltarlo: al volver a Viciódromo, el botón que se
+        // venía usando en el juego no dispara nada acá.
+        if (down) held.set(name, { start: now, last: now, ignored: true });
+        else held.delete(name);
+        continue;
+      }
       if (down && since == null) {
         held.set(name, { start: now, last: now });
         document.body.classList.add('gamepad-active');
@@ -162,6 +172,10 @@
       } else if (!down && since != null) held.delete(name);
     }
     requestAnimationFrame(poll);
+  }
+  // ¿Está Viciódromo en primer plano? Con otra ventana activa (el juego) el navegador igual informa el mando.
+  function windowFocused() {
+    return document.visibilityState !== 'hidden' && document.hasFocus();
   }
   function startPolling() {
     if (polling) return;

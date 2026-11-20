@@ -1,5 +1,6 @@
 // «Tu actividad»: resumen del tiempo jugado. Las sesiones las mide el launcher (sessions.json); Steam aporta
 // además sus horas totales y las de las últimas dos semanas, también de lo jugado fuera del launcher.
+// Con playtime 'viciodromo' (configuración «Horas jugadas») sólo cuenta lo medido por el launcher.
 // Fechas en la hora local del equipo: la semana empieza el lunes.
 const DAY = 86400000;
 const WEEKS = 12;
@@ -17,6 +18,12 @@ function weekStart(time) {
   return date;
 }
 const isSteam = (game) => game?.steam && Number.isFinite(game.steam.playtimeHours);
+const measured = (game) => Number(game?.playSeconds) || 0;
+// Segundos jugados de un juego. Steam ya incluye lo abierto desde acá: se toma el mayor, nunca la suma.
+export function gameSeconds(game, playtime = 'all') {
+  if (playtime === 'viciodromo' || !isSteam(game)) return measured(game);
+  return Math.max(game.steam.playtimeHours * 3600, measured(game));
+}
 
 // Días seguidos con al menos una sesión. La racha actual sigue viva si se jugó hoy o ayer.
 export function streaks(days, now) {
@@ -44,7 +51,9 @@ export function streaks(days, now) {
   return { current, best };
 }
 
-export function buildActivity({ sessions = [], games = [], now = Date.now() }) {
+export function buildActivity({ sessions = [], games = [], now = Date.now(), playtime = 'all' }) {
+  const external = playtime !== 'viciodromo';
+  const fromStore = (game) => external && isSteam(game);
   const byKey = new Map(games.map((game) => [game.key, game]));
   const valid = sessions.filter((item) => Number.isFinite(Date.parse(item.start)) && item.seconds > 0);
 
@@ -67,9 +76,12 @@ export function buildActivity({ sessions = [], games = [], now = Date.now() }) {
   const twoWeeksAgo = now - 14 * DAY;
   const recentSeconds =
     valid
-      .filter((item) => Date.parse(item.start) >= twoWeeksAgo && !isSteam(byKey.get(item.key)))
+      .filter((item) => Date.parse(item.start) >= twoWeeksAgo && !fromStore(byKey.get(item.key)))
       .reduce((sum, item) => sum + item.seconds, 0) +
-    games.filter(isSteam).reduce((sum, game) => sum + (game.steam.recentHours || 0) * 3600, 0);
+    games.filter(fromStore).reduce((sum, game) => sum + (game.steam.recentHours || 0) * 3600, 0);
+
+  // Total de la biblioteca, con la misma regla que cada juego.
+  const totalSeconds = games.reduce((sum, game) => sum + gameSeconds(game, playtime), 0);
 
   // Más jugados: horas de Steam o, en las demás tiendas y Arcade, las medidas por el launcher.
   const top = games
@@ -77,8 +89,8 @@ export function buildActivity({ sessions = [], games = [], now = Date.now() }) {
       key: game.key,
       name: game.name,
       platform: game.platform,
-      seconds: isSteam(game) ? game.steam.playtimeHours * 3600 : Number(game.playSeconds) || 0,
-      recentSeconds: isSteam(game) ? (game.steam.recentHours || 0) * 3600 : 0
+      seconds: gameSeconds(game, playtime),
+      recentSeconds: fromStore(game) ? (game.steam.recentHours || 0) * 3600 : 0
     }))
     .filter((game) => game.seconds >= 60)
     .sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name, 'es'))
@@ -99,6 +111,8 @@ export function buildActivity({ sessions = [], games = [], now = Date.now() }) {
     weeks,
     thisWeekSeconds: weeks.at(-1).seconds,
     recentSeconds: Math.round(recentSeconds),
+    totalSeconds: Math.round(totalSeconds),
+    playtime: external ? 'all' : 'viciodromo',
     streak: streaks(
       valid.map((item) => dayKey(localDay(Date.parse(item.start)))),
       now

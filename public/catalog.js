@@ -8,10 +8,16 @@
   };
   const lastPlayed = (game) => Math.max(time(game.lastLaunchedAt), time(game.steam && game.steam.lastPlayedAt));
   const isArcade = (game) => game.platform === 'Arcade';
-  // Horas según Steam o, para lo que abre el propio launcher (Arcade), según las sesiones que midió.
+  // Horas jugadas con la misma regla que el resto de la aplicación (GMLShelves.playedHours: Steam y lo medido,
+  // o sólo lo medido por Viciódromo según la configuración). Sin dato conocido, null (salvo Arcade: 0).
   const hoursPlayed = (game) => {
-    if (game.steam && Number.isFinite(game.steam.playtimeHours)) return game.steam.playtimeHours;
-    if (Number.isFinite(game.playSeconds) && game.playSeconds > 0) return game.playSeconds / HOUR;
+    const shelves = root.GMLShelves;
+    const measured = Number.isFinite(game.playSeconds) && game.playSeconds > 0 ? game.playSeconds / HOUR : 0;
+    const steam = game.steam && Number.isFinite(game.steam.playtimeHours) ? game.steam.playtimeHours : null;
+    const mode = shelves ? shelves.getPlaytimeMode() : 'all';
+    if (mode === 'viciodromo') return measured > 0 || isArcade(game) ? measured : null;
+    if (steam != null) return Math.max(steam, measured);
+    if (measured > 0) return measured;
     return isArcade(game) ? 0 : null;
   };
   const rating = (game) => (game.meta && Number.isFinite(game.meta.rating) ? game.meta.rating : null);

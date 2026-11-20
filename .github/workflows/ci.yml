@@ -47,7 +47,7 @@ jobs:
         run: npm run test:ui
       - name: Informe y diferencias de las capturas
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: informe-interfaz
           path: |
@@ -82,7 +82,7 @@ jobs:
             Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
           if (-not $instalado) { throw 'El instalador no dejó el programa en Programs\viciodromo.' }
           node tools/smoke.mjs $instalado.FullName
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: viciodromo
           path: releases/*.exe

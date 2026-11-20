@@ -162,10 +162,30 @@
     const days = Math.round(hours / 24);
     return days === 1 ? 'hace 1 día' : 'hace ' + days + ' días';
   }
-  // Horas jugadas: las de Steam si es de Steam; si no, las que midió el launcher.
-  function playedHours(game) {
-    if (game.steam && Number.isFinite(game.steam.playtimeHours)) return game.steam.playtimeHours;
-    return Number.isFinite(game.playSeconds) && game.playSeconds > 0 ? game.playSeconds / 3600 : 0;
+  // Horas jugadas según la configuración («Horas jugadas»):
+  // - 'all' (por omisión): también lo jugado fuera de Viciódromo. Hoy sólo Steam informa sus horas; como Steam
+  //   ya cuenta lo que se abrió desde acá, se toma el mayor de los dos valores (nunca se suman: sería contar doble).
+  // - 'viciodromo': sólo lo que midió Viciódromo al abrir el juego.
+  const PLAYTIME_MODES = ['all', 'viciodromo'];
+  let playtimeMode = 'all';
+  function setPlaytimeMode(mode) {
+    playtimeMode = PLAYTIME_MODES.includes(mode) ? mode : 'all';
+    return playtimeMode;
+  }
+  const getPlaytimeMode = () => playtimeMode;
+  const measuredHours = (game) =>
+    Number.isFinite(game.playSeconds) && game.playSeconds > 0 ? game.playSeconds / 3600 : 0;
+  const externalHours = (game) =>
+    game.steam && Number.isFinite(game.steam.playtimeHours) ? game.steam.playtimeHours : null;
+  function playedHours(game, mode = playtimeMode) {
+    const measured = measuredHours(game);
+    if (mode === 'viciodromo') return measured;
+    const external = externalHours(game);
+    return external == null ? measured : Math.max(external, measured);
+  }
+  // Horas de las últimas dos semanas que informa la tienda (sólo cuentan si se suman otras plataformas).
+  function recentExternalHours(game, mode = playtimeMode) {
+    return mode === 'viciodromo' ? 0 : Number(game.steam?.recentHours) || 0;
   }
   function hours(value) {
     if (!Number.isFinite(value) || value <= 0) return '';
@@ -217,6 +237,10 @@
     relativeTime,
     hours,
     playedHours,
+    recentExternalHours,
+    externalHours,
+    setPlaytimeMode,
+    getPlaytimeMode,
     playable,
     libraryRows,
     initialOf

@@ -132,7 +132,7 @@ Se necesita Node.js 22 y `npm install`. La interfaz es HTML, CSS y JavaScript si
 | `npm run package` | Genera el instalador y el portable de Windows en `releases/`. Conserva sólo la versión actual y la anterior. |
 | `npm run smoke`   | Abre el portable de `releases/` en modo de prueba (datos en una carpeta temporal) y comprueba que arranca. |
 
-La primera vez, `npx playwright install chromium` descarga el navegador de las pruebas de interfaz. Si un cambio visual es intencional, `npm run test:ui -- --update-snapshots` actualiza las capturas de referencia (`test/ui/capturas/`).
+La primera vez, `npx playwright install chromium` descarga el navegador de las pruebas de interfaz. Si un cambio visual es intencional, `npm run test:ui -- --update-snapshots` actualiza las capturas de referencia (`test/ui/capturas/`). Las de referencia son las de GitHub (Ubuntu 24.04): para regenerarlas allá, subí a la rama un commit con `[capturas]` en el mensaje (o **Actions → Actualizar capturas → Run workflow**); las sube y vuelve a correr las pruebas, que arman el ejecutable.
 
 En desarrollo, los datos se guardan en `data/` (excluida del repositorio): el inventario `library.json`, las preferencias y el resto de los archivos del perfil.
 

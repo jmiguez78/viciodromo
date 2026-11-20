@@ -1930,7 +1930,7 @@ a.meta-source {
 /* ── Para revisar ── */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   margin: 18px 0 34px;
   gap: var(--space-3);
 }
@@ -1964,6 +1964,10 @@ a.meta-source {
   .stat-grid {
     grid-template-columns: repeat(2, 1fr);
     margin-bottom: 28px;
+  }
+  /* Cinco datos en dos columnas: el total ocupa la fila entera. */
+  .stat-grid > .stat:first-child {
+    grid-column: 1 / -1;
   }
 }
 .stat-grid .stat {

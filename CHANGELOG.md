@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 0.39.0
+
+**El mando ya no maneja Viciódromo mientras jugás, y elegís cómo se cuentan las horas.**
+
+- **Mando.** Viciódromo sólo responde al mando cuando su ventana está en primer plano. Con el juego adelante (aunque Viciódromo siga a la vista en otro monitor) lo que hacés en el juego ya no mueve nada acá. Al volver, el botón que venías apretando no dispara nada hasta que lo soltás.
+- **Horas jugadas.** Nueva opción en **Configuración → Horas jugadas**: **Sumar otras plataformas** (activada) usa también las horas que informa Steam, incluso de lo que abriste por fuera; desactivada, se muestra sólo lo jugado desde Viciódromo. Vale para las tarjetas, la Biblioteca (y su orden por horas), la ficha del juego, el modo sala y **Tu actividad**.
+- Steam ya cuenta lo que se abre desde Viciódromo, así que las horas no se suman dos veces: por juego se toma el mayor de los dos valores.
+- **Tu actividad** suma el dato **Tiempo total**, con la misma regla.
+
 ## 0.38.0
 
 **Instalador y actualización automática.** Además del portable, cada versión trae un instalador para Windows: `Viciodromo-Setup-<versión>.exe`.

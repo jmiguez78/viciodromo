@@ -257,23 +257,39 @@ test('guarda el tema y lo conserva al restaurar un respaldo', async () => {
   assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), {
     theme: 'dark',
     minimizeOnLaunch: true,
-    onboardingDismissed: false
+    onboardingDismissed: false,
+    playtime: 'all'
   });
   const invalid = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ theme: 'rosa' }) });
   assert.equal(invalid.status, 400);
   const saved = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ theme: 'light' }) });
-  assert.deepEqual(await saved.json(), { theme: 'light', minimizeOnLaunch: true, onboardingDismissed: false });
+  assert.deepEqual(await saved.json(), {
+    theme: 'light',
+    minimizeOnLaunch: true,
+    onboardingDismissed: false,
+    playtime: 'all'
+  });
   const minimize = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ minimizeOnLaunch: false }) });
-  assert.deepEqual(await minimize.json(), { theme: 'light', minimizeOnLaunch: false, onboardingDismissed: false });
+  assert.deepEqual(await minimize.json(), {
+    theme: 'light',
+    minimizeOnLaunch: false,
+    onboardingDismissed: false,
+    playtime: 'all'
+  });
   assert.equal(
     (await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ minimizeOnLaunch: 'sí' }) })).status,
     400
   );
+  const playtime = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ playtime: 'viciodromo' }) });
+  assert.equal((await playtime.json()).playtime, 'viciodromo');
+  assert.equal((await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ playtime: 'epic' }) })).status, 400);
+  await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ playtime: 'all' }) });
   await fetch(`${base}/api/preferences/import`, { method: 'POST', ...json({ games: {} }) });
   assert.deepEqual(await (await fetch(`${base}/api/settings`)).json(), {
     theme: 'light',
     minimizeOnLaunch: false,
-    onboardingDismissed: false
+    onboardingDismissed: false,
+    playtime: 'all'
   });
 });
 
@@ -285,7 +301,7 @@ test('Primeros pasos: juegos por tienda, conexiones y descartar', async () => {
   assert.equal(data.arcade.configured, false);
   await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ onboardingDismissed: true }) });
   assert.equal((await (await fetch(`${base}/api/onboarding`)).json()).dismissed, true);
-  await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ onboardingDismissed: false }) });
+  await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ onboardingDismissed: false, playtime: 'all' }) });
 });
 
 test('Arcade sin MAME configurado no indexa ni rompe la biblioteca', async () => {

@@ -1,0 +1,58 @@
+# Capturas de referencia: cuando un cambio visual es intencional, este flujo las vuelve a sacar en la misma máquina
+# que las pruebas (Ubuntu 24.04: las capturas dependen de sus fuentes), las sube a la rama y vuelve a lanzar
+# «Pruebas», que arma el ejecutable. Se lanza de dos formas:
+# - con un push a una rama cuyo último commit diga [capturas] en el mensaje;
+# - a mano: Actions → «Actualizar capturas» → Run workflow (el botón aparece cuando este archivo ya está en main).
+name: Actualizar capturas
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  capturas:
+    name: Capturas de referencia
+    runs-on: ubuntu-24.04
+    # En un push, sólo si se pidió con [capturas] (el commit que sube este flujo no lo lleva: no se repite).
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[capturas]')
+    steps:
+      - name: No en main
+        if: github.ref_name == 'main'
+        run: |
+          echo "::error::Las capturas se actualizan en una rama de trabajo, no en main."
+          exit 1
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Sacar las capturas de nuevo
+        run: npx playwright test -c test/ui/playwright.config.mjs capturas.spec.mjs --update-snapshots
+      - name: Subirlas a la rama
+        id: subir
+        shell: bash
+        run: |
+          if git diff --quiet -- test/ui/capturas; then
+            echo "Las capturas no cambiaron."
+            echo "cambios=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add test/ui/capturas
+          git commit -m "Capturas de referencia actualizadas"
+          git push
+          echo "cambios=si" >> "$GITHUB_OUTPUT"
+      # Lo que sube este flujo no dispara «Pruebas» por sí solo (regla de GitHub): se lanza a mano acá.
+      - name: Volver a correr las pruebas y armar el ejecutable
+        if: steps.subir.outputs.cambios == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref "${GITHUB_REF_NAME}"

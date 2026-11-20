@@ -5,6 +5,8 @@ on:
   push:
     branches: ['**']
   pull_request:
+  # También a mano (Actions → Pruebas → Run workflow); lo usa «Actualizar capturas» después de subirlas.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

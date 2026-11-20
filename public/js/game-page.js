@@ -56,9 +56,10 @@ export function renderGameAside(game) {
   statRow(
     stats,
     'Tiempo jugado',
-    GMLShelves.hours(GMLShelves.playedHours(game)) || (game.steam ? 'Sin horas en Steam' : 'Sin sesiones medidas')
+    GMLShelves.hours(GMLShelves.playedHours(game)) ||
+      (game.steam && GMLShelves.getPlaytimeMode() !== 'viciodromo' ? 'Sin horas en Steam' : 'Sin sesiones medidas')
   );
-  statRow(stats, 'Últimas dos semanas', GMLShelves.hours(game.steam?.recentHours));
+  statRow(stats, 'Últimas dos semanas', GMLShelves.hours(GMLShelves.recentExternalHours(game)));
   statRow(stats, 'Última sesión', played ? GMLShelves.relativeDay(new Date(played).toISOString()) : 'Sin registro');
   statRow(stats, 'Duración estimada', length ? 'Unas ' + GMLShelves.hours(length / 3600) : '');
   statRow(stats, 'Valoración de la crítica', game.meta?.rating ? game.meta.rating + ' de 100' : '');

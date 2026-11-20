@@ -117,3 +117,19 @@ test('Modo sala: la biblioteca en filas por letra, sin artículos y con números
     ]
   );
 });
+
+test('horas jugadas: con otras plataformas (sin contar doble) o sólo lo medido por Viciódromo', () => {
+  const { playedHours, setPlaytimeMode, recentExternalHours } = globalThis.GMLShelves;
+  const steam = { steam: { playtimeHours: 100, recentHours: 2 }, playSeconds: 3 * 3600 };
+  const steamNuevo = { steam: { playtimeHours: 1 }, playSeconds: 3 * 3600 }; // Steam todavía no actualizó
+  const epic = { playSeconds: 1800 };
+  assert.equal(playedHours(steam), 100);
+  assert.equal(playedHours(steamNuevo), 3);
+  assert.equal(playedHours(epic), 0.5);
+  assert.equal(recentExternalHours(steam), 2);
+  assert.equal(setPlaytimeMode('viciodromo'), 'viciodromo');
+  assert.equal(playedHours(steam), 3);
+  assert.equal(playedHours({ steam: { playtimeHours: 50 } }), 0);
+  assert.equal(recentExternalHours(steam), 0);
+  assert.equal(setPlaytimeMode('cualquiera'), 'all');
+});

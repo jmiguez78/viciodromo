@@ -35,6 +35,8 @@ test('semanas, dos semanas con Steam, más jugados y últimas sesiones', () => {
   assert.equal(activity.weeks.at(-2).seconds, 1200);
   // Hades y Street Fighter medidos (3630 s) + 3 h de Steam; la sesión de Counter-Strike ya la cuenta Steam.
   assert.equal(activity.recentSeconds, 3630 + 3 * 3600);
+  assert.equal(activity.totalSeconds, 120 * 3600 + 7200 + 30);
+  assert.equal(activity.playtime, 'all');
   assert.deepEqual(
     activity.top.map((game) => [game.key, game.seconds]),
     [
@@ -49,4 +51,34 @@ test('semanas, dos semanas con Steam, más jugados y últimas sesiones', () => {
   assert.equal(activity.sessions, 4);
   assert.equal(activity.measuredGames, 3);
   assert.deepEqual(activity.streak, { current: 1, best: 2 });
+});
+
+test('sólo Viciódromo: sin las horas de Steam, únicamente lo medido por el launcher', () => {
+  const games = [
+    {
+      key: 'steam:10',
+      name: 'Counter-Strike',
+      platform: 'Steam',
+      playSeconds: 1200,
+      steam: { playtimeHours: 120, recentHours: 3 }
+    },
+    { key: 'epic games:x', name: 'Hades', platform: 'Epic Games', playSeconds: 7200 }
+  ];
+  const sessions = [
+    { key: 'steam:10', name: 'Counter-Strike', start: at('2026-10-25T23:30:00'), seconds: 1200 },
+    { key: 'epic games:x', name: 'Hades', start: at('2026-10-26T21:00:00'), seconds: 3600 }
+  ];
+  const activity = buildActivity({ sessions, games, now, playtime: 'viciodromo' });
+  assert.equal(activity.playtime, 'viciodromo');
+  assert.equal(activity.totalSeconds, 1200 + 7200);
+  assert.equal(activity.recentSeconds, 1200 + 3600);
+  assert.deepEqual(
+    activity.top.map((game) => [game.key, game.seconds, game.recentSeconds]),
+    [
+      ['epic games:x', 7200, 0],
+      ['steam:10', 1200, 0]
+    ]
+  );
+  // Sumando plataformas, Steam (que ya incluye lo abierto desde acá) no se suma dos veces.
+  assert.equal(buildActivity({ sessions, games, now }).totalSeconds, 120 * 3600 + 7200);
 });

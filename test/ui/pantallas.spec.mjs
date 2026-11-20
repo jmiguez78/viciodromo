@@ -56,7 +56,8 @@ test('Configuración y Para revisar abren sin errores', async ({ page }) => {
 test('Tu actividad muestra semanas, más jugados y últimas sesiones', async ({ page }) => {
   await openApp(page);
   await show(page, 'activity');
-  await expect(page.locator('#activity-summary .stat')).toHaveCount(4);
+  await expect(page.locator('#activity-summary .stat')).toHaveCount(5);
+  await expect(page.locator('#activity-summary .stat').first()).toContainText('Tiempo total');
   await expect(page.locator('#activity-chart .week-hit')).toHaveCount(12);
   await expect(page.locator('#activity-top li').first()).toBeVisible();
   await expect(page.locator('#activity-recent li')).toHaveCount(12);

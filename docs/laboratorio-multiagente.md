@@ -34,3 +34,13 @@ Leer `AGENTS.md` y analizar el mismo parche de instrucciones. Buscar supuestos i
 - Las observaciones reales de Claude y Gemini se incorporan o se justifican antes de considerar terminado el ciclo entre las tres herramientas.
 
 Las instrucciones son orientación, no un bloqueo técnico. Antes de trabajo simultáneo o automatización, preparar carpetas por agente y evaluar permisos efectivos. No compartir datos personales ni copiar credenciales al laboratorio.
+
+## Primera revisión de Claude
+
+El usuario aportó la salida de Claude Code sobre el commit inicial `b9305f3`. La revisión informó dos hallazgos y una duda; Codex contrastó los hallazgos con los workflows antes de ajustar las instrucciones:
+
+- Aclarar que la prohibición de instalar el producto corresponde a la computadora del usuario. CI puede instalarlo y abrirlo en su runner aislado, con consumo de recursos de Actions.
+- Documentar el marcador que activa la actualización de capturas y la cadena condicional: imágenes modificadas, commit del bot, push y relanzamiento de CI. Un escritor por carpeta no impide escrituras remotas del bot.
+- Explicar que `AGENTS.md` cumple la función de guía para Codex; no agregar otra copia de las reglas.
+
+Se aceptan como mejoras de claridad. No se identificó una ejecución accidental de publicación o una modificación del perfil real. La revisión de Gemini y una nueva lectura de Claude sobre estos ajustes siguen pendientes.

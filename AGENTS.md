@@ -6,7 +6,7 @@
 - No modificar ni fusionar a `main`. No publicar releases, subir etiquetas, desplegar ni cambiar secretos o credenciales.
 - No cambiar versión, configuración de publicación, workflows, actualizador ni tareas programadas salvo una solicitud específica del usuario.
 - No leer, copiar ni mostrar valores de `.env`, credenciales, datos del perfil real, inventarios, capturas personales o registros reales. No conectar Steam, IGDB u otras cuentas durante las pruebas.
-- La separación de ramas y estas instrucciones no impiden efectos externos. No iniciar la aplicación con el perfil habitual, escanear unidades, instalar el producto ni registrar tareas de Windows.
+- La separación de ramas y estas instrucciones no impiden efectos externos. En la computadora del usuario, no iniciar la aplicación con el perfil habitual, escanear unidades, instalar el producto ni registrar tareas de Windows. Esto no prohíbe las pruebas de instalación aisladas del runner de CI descritas más abajo.
 - Usar un solo escritor por carpeta. Para trabajo simultáneo, usar carpetas y ramas propias. Los revisores entregan hallazgos sin editar por defecto.
 - Las suscripciones disponibles son ChatGPT Plus, Claude Pro y Google AI Pro. Preferir inicio de sesión con esas cuentas; no activar APIs de pago, compras, recargas ni nuevos servicios automáticamente. No inspeccionar archivos de autenticación.
 
@@ -30,14 +30,18 @@ CI utiliza Node 22. Revisar scripts antes de instalar dependencias. No instalar 
 - Código: `npm run check` y `npm test`, con dependencias disponibles y tras verificar que las pruebas afectadas usan datos temporales o ficticios.
 - Interfaz: añadir `npm run test:ui`. La configuración existente usa `GML_OFFLINE=1`, datos en `test/ui/.data` y carpetas ficticias para Steam y videos. No reutilizar un servidor del perfil real.
 - Capturas de referencia: CI usa Ubuntu 24.04; no regenerarlas en Windows para ocultar diferencias del sistema.
-- No ejecutar empaquetado, prueba de instalación, escaneo o lanzamiento de juegos para validar documentación.
+- No ejecutar localmente empaquetado, prueba de instalación, escaneo o lanzamiento de juegos para validar documentación. CI conserva sus comprobaciones automáticas descritas más abajo.
 - `npm run verify` no incluye todas las comprobaciones de CI. Informar exactamente qué se ejecutó, qué pasó y qué falta.
 
-Los pushes pueden ejecutar CI, que además construye y prueba instaladores en su runner. La publicación de versiones se activa con etiquetas `v*.*.*`. El workflow de capturas puede escribir en la rama cuando se solicita explícitamente; no activarlo como parte incidental de una tarea.
+Cada push a cualquier rama activa CI. Cuando pasan los trabajos previos, el job de ejecutables construye, instala y abre el producto en el runner de Windows de GitHub, separado del perfil local del usuario. Esto consume recursos de Actions y genera artefactos de prueba; no publica una release. La prohibición de instalación local no elimina estos efectos automáticos de un push. La publicación de versiones se activa con etiquetas `v*.*.*`.
+
+No incluir `[capturas]` en mensajes de commit ni lanzar manualmente el workflow de capturas durante el laboratorio, salvo solicitud específica para actualizar las referencias. Ese marcador puede activar el job en ramas distintas de main. Si las imágenes cambian, el bot crea un commit, lo sube a la misma rama y relanza CI completo, incluidas las pruebas de instalación. La regla de un escritor por carpeta evita conflictos locales; el bot es un escritor remoto adicional. Si se autoriza ese flujo, esperar a que termine y traer sus cambios antes de continuar editando o subiendo commits.
 
 ## Colaboración
 
 Codex implementa; Claude revisa; Gemini analiza arquitectura y casos límite. Estos roles son el punto de partida, no sesiones conectadas automáticamente.
+
+`AGENTS.md` es la guía del proyecto para Codex y la base compartida que las guías de Claude y Gemini piden leer. No hace falta crear un archivo `CODEX.md` adicional para este laboratorio.
 
 Cada entrega identifica objetivo, rama, commit base, archivos afectados, validación y limitaciones. Revisar siempre el mismo commit o el mismo parche; no asumir que otra herramienta comparte historial o archivos.
 

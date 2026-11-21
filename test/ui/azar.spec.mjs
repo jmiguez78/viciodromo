@@ -46,6 +46,13 @@ test('sin resultados, cargando o con error no permite sortear y explica el motiv
   });
   await expect(random).toBeDisabled();
   await expect(page.locator('#random-help')).toContainText('debe cargarse');
+  await page.evaluate(async () => {
+    GML.state.loadError = '';
+    GML.state.games = [];
+    (await import('/js/library.js')).renderLibrary();
+  });
+  await expect(random).toBeDisabled();
+  await expect(page.locator('#random-help')).toHaveText('Todavía no hay juegos en la biblioteca para elegir.');
 });
 
 test('respeta la lista activa y favoritos sin perderlos al volver', async ({ page }) => {

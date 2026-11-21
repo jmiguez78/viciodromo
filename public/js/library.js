@@ -207,9 +207,11 @@ export function renderLibrary() {
     ? 'Cargando los juegos para elegir.'
     : state.loadError
       ? 'La biblioteca debe cargarse antes de elegir.'
-      : entries.length === 0
-        ? 'No hay resultados para elegir. Probá otra búsqueda o quitá filtros.'
-        : 'Abre una ficha de estos resultados, sin iniciar el juego.';
+      : state.games.length === 0
+        ? 'Todavía no hay juegos en la biblioteca para elegir.'
+        : entries.length === 0
+          ? 'No hay resultados para elegir. Probá otra búsqueda o quitá filtros.'
+          : 'Abre una ficha de estos resultados, sin iniciar el juego.';
   // Si el foco estaba dentro de la grilla, se recupera sobre el mismo juego y acción tras redibujar.
   const focused = library.contains(document.activeElement)
     ? {

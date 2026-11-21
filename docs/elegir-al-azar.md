@@ -15,6 +15,7 @@ Con cero resultados, carga o error queda deshabilitado con explicación visible.
 - Codex reutilizó botones y tokens del proyecto. La consulta de referencias de 21st no requirió importar componentes de otro framework ni generación alojada.
 - Claude Pro alcanzó el límite antes de entregar la revisión. No se compraron créditos ni se pasó a API.
 - Gemini revisó el parche y planteó un posible fallo con el logo del juego. El código conserva el título con `visually-hidden`; una nueva prueba con el logo cargado confirmó que mantiene el foco. Se añadieron pruebas de alcance y retorno cuando cambian los resultados.
+- La inspección de las referencias visuales llevó a distinguir el mensaje de biblioteca vacía del de búsqueda sin resultados, con una comprobación específica en la prueba de estados.
 
 ## Criterios y verificación
 

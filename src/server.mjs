@@ -238,7 +238,9 @@ const wiki = createWiki();
 // Caché de imágenes del cliente de Steam, donde esté instalado (se consulta una vez).
 let steamCacheDir = null;
 const steamArtCache = () =>
-  (steamCacheDir ??= steamDirectory(windowsEnv).then((dir) => path.join(dir, 'appcache', 'librarycache')));
+  (steamCacheDir ??= (
+    process.env.GML_STEAM_DIR ? Promise.resolve(process.env.GML_STEAM_DIR) : steamDirectory(windowsEnv)
+  ).then((dir) => path.join(dir, 'appcache', 'librarycache')));
 // Un valor del registro (con PowerShell, ver windowsEnv.registry: respeta las tildes de las rutas).
 async function registryValue(key, name) {
   const value = (await windowsEnv.registry(key, { recurse: false }))[0]?.values[name];
@@ -425,6 +427,7 @@ async function downloadArt(sources, file, missFile) {
 // Orden de descarga: la ruta vigente que informa la tienda de Steam, la ruta clásica, IGDB y, para la portada,
 // la cabecera horizontal como último recurso.
 async function downloadSources(game, meta, kind) {
+  if (offline) return [];
   const classic = onlineSources(game, meta, kind);
   if (isArcade(game) && classic.length) return arcadeFor(game).resolveSources(game, kind, classic);
   if (!isSteamApp(game)) return classic;
@@ -796,6 +799,7 @@ export function createServer({
   onRestart,
   onLibraryChange,
   listProcesses,
+  launchGame = launch,
   autoUpdate = noAutoUpdate
 } = {}) {
   const router = createRouter();
@@ -930,7 +934,7 @@ export function createServer({
           await finishSession(game, { start, seconds, source: 'mame' });
         });
       } else {
-        await launch(game);
+        await launchGame(game);
         tracked = tracker.track(game);
       }
       log('info', 'juego', `Iniciado ${game.key} (${game.launch?.type ?? 'sin tipo'})`);

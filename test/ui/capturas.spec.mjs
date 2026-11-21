@@ -44,6 +44,8 @@ test('Configuración', async ({ page }) => {
   await openApp(page);
   await show(page, 'settings');
   await stable(page);
+  // La ruta real de la fixture depende del equipo; conservar la etiqueta de ejemplo en la captura.
+  await page.locator('#mame-exe').evaluate((input) => (input.value = 'C:\\MAME\\mame.exe'));
   // La versión cambia en cada publicación: se tapa.
   await expect(page).toHaveScreenshot('configuracion.png', { fullPage: true, mask: [page.locator('#update-status')] });
 });

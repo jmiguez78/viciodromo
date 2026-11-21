@@ -209,7 +209,7 @@ export function writeFixture(dir) {
   write('metadata.json', { schemaVersion: 3, games: metadata });
   // «Primeros pasos» descartado: las capturas de Inicio no la incluyen (tiene su propia prueba).
   write('preferences.json', { schemaVersion: 1, settings: { onboardingDismissed: true }, games: prefs });
-  write('arcade.json', { exe: 'C:\\MAME\\mame.exe', showAdult: false });
+  write('arcade.json', { exe: path.resolve(dir, 'MAME', 'mame.exe'), showAdult: false });
   // Sesiones medidas por el launcher en las últimas semanas, para «Tu actividad».
   const sessions = [];
   for (let index = 0; index < 26; index++) {

@@ -7,9 +7,21 @@ import path from 'node:path';
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-test-'));
 process.env.GML_DATA_DIR = dataDir;
+process.env.GML_OFFLINE = '1';
 process.env.GML_STEAM_DIR = path.join(dataDir, 'Steam');
 process.env.GML_VIDEOS_DIR = path.join(dataDir, 'Videos');
 process.env.GML_CAPTURES_DIR = path.join(dataDir, 'Videos', 'Captures');
+// Instalar antes del import: los clientes de red capturan fetch al crearse.
+const realFetch = globalThis.fetch;
+const externalRequests = [];
+globalThis.fetch = (input, init) => {
+  const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
+    externalRequests.push(url.origin);
+    throw new Error('La prueba no permite solicitudes externas.');
+  }
+  return realFetch(input, init);
+};
 const { createServer } = await import('../src/server.mjs');
 
 const catalog = {
@@ -45,8 +57,8 @@ const catalog = {
       name: 'Juego roto',
       platform: 'GOG Galaxy',
       drive: 'C:',
-      location: 'C:\\no-existe',
-      launch: { type: 'file', target: 'C:\\no-existe\\juego.exe', available: true },
+      location: path.join(dataDir, 'no-existe'),
+      launch: { type: 'file', target: path.join(dataDir, 'no-existe', 'juego.exe'), available: true },
       status: 'installed',
       evidence: ''
     }
@@ -81,13 +93,19 @@ before(async () => {
       }
     })
   );
-  server = createServer();
+  server = createServer({
+    launchGame: async () => {
+      throw new Error('No se pudo iniciar el juego. Fallo simulado sin crear procesos.');
+    }
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
   server.close();
+  globalThis.fetch = realFetch;
   await fs.rm(dataDir, { recursive: true, force: true });
+  assert.deepEqual(externalRequests, [], 'No debe intentarse ninguna solicitud externa.');
 });
 
 const json = (body) => ({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -207,7 +225,7 @@ test('la biblioteca resume las imágenes disponibles sin exponer rutas locales',
   const steam = library.games.find((game) => game.key === 'steam:10');
   const epic = library.games.find((game) => game.key === 'epic games:x');
   assert.equal(steam.art, undefined);
-  assert.deepEqual(steam.artwork, { cover: 'portrait', hero: true, wordmark: true, background: null });
+  assert.deepEqual(steam.artwork, { cover: 'portrait', hero: false, wordmark: true, background: null });
   assert.deepEqual(epic.artwork, { cover: null, hero: false, wordmark: false, background: null });
 });
 
@@ -224,6 +242,27 @@ test('sirve la imagen local y responde 404 cuando no hay ninguna fuente', async 
   assert.equal((await fetch(`${base}/api/art/wordmark/${encodeURIComponent('epic games:x')}`)).status, 404);
 });
 
+test('busca arte en la carpeta Steam ficticia sin consultar el registro real', async (t) => {
+  const { windowsEnv } = await import('../src/indexer.mjs');
+  const registry = t.mock.method(windowsEnv, 'registry', async () => {
+    throw new Error('La prueba no debe consultar el registro.');
+  });
+  const cache = path.join(process.env.GML_STEAM_DIR, 'appcache', 'librarycache', '10');
+  await fs.mkdir(cache, { recursive: true });
+  await fs.writeFile(path.join(cache, 'library_hero.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  const response = await fetch(`${base}/api/art/hero/steam%3A10`);
+  assert.equal(response.status, 200);
+  assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [0xff, 0xd8, 0xff, 0xd9]);
+  assert.equal(registry.mock.callCount(), 0);
+});
+
+test('sin arte local, offline no consulta la tienda ni descarga imágenes de Steam', async () => {
+  await fs.rm(path.join(process.env.GML_STEAM_DIR, 'appcache', 'librarycache', '10', 'library_hero.jpg'));
+  const response = await fetch(`${base}/api/art/hero/steam%3A10`);
+  assert.equal(response.status, 404);
+  assert.deepEqual(externalRequests, []);
+});
+
 test('agrega los metadatos de IGDB sin exponer identificadores internos de imágenes', async () => {
   const library = await (await fetch(`${base}/api/library`)).json();
   const roto = library.games.find((game) => game.key === 'gog galaxy:roto');
@@ -236,7 +275,7 @@ test('agrega los metadatos de IGDB sin exponer identificadores internos de imág
     languages: [{ name: 'Spanish', support: 'Subtitles' }]
   });
   assert.equal(roto.meta.source, undefined);
-  assert.deepEqual(roto.artwork, { cover: 'portrait', hero: false, wordmark: false, background: null });
+  assert.deepEqual(roto.artwork, { cover: null, hero: false, wordmark: false, background: null });
   assert.equal(library.games.find((game) => game.key === 'epic games:x').meta, null);
 });
 
@@ -457,7 +496,7 @@ test('la API responde 400, 404 y 405 con mensajes claros en lugar de 500', async
 test('sin repositorio de publicaciones, el aviso de versión nueva queda apagado', async () => {
   const updates = await (await fetch(`${base}/api/updates`)).json();
   assert.equal(typeof updates.current, 'string');
-  assert.ok('enabled' in updates);
+  assert.equal(updates.enabled, false);
 });
 
 test('fuera de la versión instalada, la actualización automática queda apagada y lo explica', async () => {

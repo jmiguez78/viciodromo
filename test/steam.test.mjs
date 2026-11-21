@@ -12,6 +12,7 @@ async function fixture(t, options = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-steam-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const client = createSteam(directory, {
+    detectLocalConnection: false,
     encrypt: async (text) => text,
     decrypt: async (text) => text,
     rpc: async () => ({ found: true }),
@@ -21,6 +22,39 @@ async function fixture(t, options = {}) {
   t.after(() => client.close());
   return { client, directory };
 }
+
+test('puede omitir la detección local sin consultar archivos del perfil', async (t) => {
+  const { client } = await fixture(t);
+  const access = t.mock.method(fs, 'access', async () => {});
+  assert.equal((await client.settings()).localConnectionAvailable, false);
+  assert.equal(access.mock.callCount(), 0);
+});
+
+test('el modo offline omite la detección local incluso si está habilitada', async (t) => {
+  const previous = process.env.GML_OFFLINE;
+  process.env.GML_OFFLINE = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.GML_OFFLINE;
+    else process.env.GML_OFFLINE = previous;
+  });
+  const access = t.mock.method(fs, 'access', async () => {});
+  const { client } = await fixture(t, { detectLocalConnection: true });
+  assert.equal((await client.settings()).localConnectionAvailable, false);
+  assert.equal(access.mock.callCount(), 0);
+});
+
+test('fuera del modo offline conserva la detección local habilitada', async (t) => {
+  const previous = process.env.GML_OFFLINE;
+  delete process.env.GML_OFFLINE;
+  t.after(() => {
+    if (previous === undefined) delete process.env.GML_OFFLINE;
+    else process.env.GML_OFFLINE = previous;
+  });
+  const access = t.mock.method(fs, 'access', async () => {});
+  const { client } = await fixture(t, { detectLocalConnection: true });
+  assert.equal((await client.settings()).localConnectionAvailable, true);
+  assert.equal(access.mock.callCount(), 2); // connect() también consulta settings().
+});
 
 test('fusiona cuenta e instalaciones por App ID sin perder juegos de otras cuentas o tiendas', () => {
   const local = [
@@ -205,6 +239,7 @@ test('en otra PC la clave guardada no se abre: pide reconectar y la biblioteca s
   const { directory } = await fixture(t);
   // Mismos archivos, otro usuario de Windows: DPAPI no puede descifrar.
   const other = createSteam(directory, {
+    detectLocalConnection: false,
     decrypt: async () => {
       throw new Error('DPAPI');
     }

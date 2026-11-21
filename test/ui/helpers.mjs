@@ -10,6 +10,10 @@ export const test = base.extend({
       if (/Content Security Policy|Refused to/i.test(message.text())) problems.push('CSP: ' + message.text());
     });
     await page.clock.setFixedTime(new Date('2026-10-24T18:00:00-03:00'));
+    // La pantalla de Configuración no consulta las tareas reales de Windows.
+    await page.route('**/api/schedule', (route) =>
+      route.fulfill({ contentType: 'application/json', body: '{"supported":false,"configured":false}' })
+    );
     // Jugar no abre nada en las pruebas.
     await page.route(/\/api\/launch\//, (route) =>
       route.fulfill({ contentType: 'application/json', body: '{"ok":true,"minimize":false}' })

@@ -54,3 +54,17 @@ El usuario aportó el análisis de Gemini del paquete de nueve archivos correspo
 - Las variables de las pruebas no prueban por sí mismas que esté bloqueado todo acceso al perfil o a la red. La inspección de sus consumidores sigue pendiente antes de ejecutar pruebas locales que puedan tener esos efectos.
 
 El primer ciclo manual entre las tres herramientas queda completado para la documentación: preparación de Codex, revisión de Claude, correcciones, segunda revisión de Claude y análisis independiente de Gemini con ajustes menores incorporados. Claude y Gemini no revisaron todavía este último ajuste de redacción. No se certifica el comportamiento funcional, los permisos remotos, las cuotas o un aislamiento técnico completo. Próximo ejercicio recomendado: inspección de sólo lectura del aislamiento de las pruebas, antes de ejecutar la aplicación o instalar dependencias.
+
+## Segundo ejercicio: aislamiento de las pruebas
+
+La primera lectura de código de Gemini quedó truncada. Se reenvió el paquete de 68 archivos en 17 partes, comprobando cada marcador final. Gemini completó el análisis y corrigió un error propio de conteo y referencias de líneas. Los hallazgos se contrastaron localmente antes de preparar el cambio.
+
+El ajuste funcional mantiene la detección de conexión local de Steam desactivada en offline y permite omitirla explícitamente en unitarias. La búsqueda de arte respeta `GML_STEAM_DIR`, y el modo offline corta también la consulta de fuentes actuales de Steam. Las fixtures de MAME quedan dentro de la carpeta de prueba. Las pruebas de interfaz sustituyen la consulta de tareas de Windows; la captura de Configuración usa sólo una etiqueta DOM estable para no mostrar rutas del equipo ni cambiar la configuración guardada.
+
+Las pruebas de servidor fijan offline antes del import, rechazan solicitudes fetch externas y sustituyen el lanzamiento de juegos. Se agregaron regresiones para la detección local, el arte Steam y la ruta de la fixture. Este control de fetch no bloquea otras APIs de red o procesos: no equivale a un sandbox general.
+
+Claude revisó el primer parche en modo de sólo lectura y encontró una expectativa incompatible con offline, un mock instalado demasiado tarde y un camino de descarga todavía activo. Se corrigieron. En una segunda revisión, con el diff incluido directamente, no encontró bloqueantes. No ejecutó código ni modificó archivos.
+
+Validación local: `npm run check`, formato con Prettier 3.6.2 y 139 pruebas unitarias aprobadas, sin fallos. Se usó Node 24.12.0; CI utiliza Node 22. No se ejecutaron localmente Electron, empaquetado, humo, instalación ni las capturas Playwright. La validación de interfaz y plataforma queda a cargo del CI existente y debe comprobarse por separado.
+
+Quedan fuera de este cambio el escaneo manual, importación de credenciales, rutas explícitas de integraciones y la preparación de datos de la prueba de humo. No habilitar esas operaciones locales basándose únicamente en este resultado.

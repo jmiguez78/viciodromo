@@ -339,10 +339,12 @@ export function createSteam(dataDir, options = {}) {
       const { saved, unreadable } = await readableCredentials();
       const snapshot = await account();
       let localConnectionAvailable = false;
-      try {
-        await fs.access(path.join(os.homedir(), '.codex', 'mcp-servers', 'steam', 'credentials.dpapi'));
-        localConnectionAvailable = true;
-      } catch {}
+      if (options.detectLocalConnection !== false && process.env.GML_OFFLINE !== '1') {
+        try {
+          await fs.access(path.join(os.homedir(), '.codex', 'mcp-servers', 'steam', 'credentials.dpapi'));
+          localConnectionAvailable = true;
+        } catch {}
+      }
       return {
         configured: Boolean(saved),
         ...(unreadable ? { needsReconnect: true } : {}),

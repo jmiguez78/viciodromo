@@ -43,4 +43,14 @@ El usuario aportó la salida de Claude Code sobre el commit inicial `b9305f3`. L
 - Documentar el marcador que activa la actualización de capturas y la cadena condicional: imágenes modificadas, commit del bot, push y relanzamiento de CI. Un escritor por carpeta no impide escrituras remotas del bot.
 - Explicar que `AGENTS.md` cumple la función de guía para Codex; no agregar otra copia de las reglas.
 
-Se aceptan como mejoras de claridad. No se identificó una ejecución accidental de publicación o una modificación del perfil real. La revisión de Gemini y una nueva lectura de Claude sobre estos ajustes siguen pendientes.
+Se aceptan como mejoras de claridad. No se identificó una ejecución accidental de publicación o una modificación del perfil real. El usuario aportó después una segunda revisión de Claude sobre `f5e819d`: consideró resueltos los dos hallazgos y aclarada la duda, sin observaciones nuevas.
+
+## Revisión independiente de Gemini
+
+El usuario aportó el análisis de Gemini del paquete de nueve archivos correspondiente a `f5e819d`. No reportó defectos críticos, altos o medios. Codex contrastó su observación menor con `ci.yml` e incorporó estas aclaraciones:
+
+- CI también se activa mediante eventos de pull request y ejecución manual, además de pushes.
+- Durante esta etapa, las operaciones locales de empaquetado, humo, instalación, escaneo o lanzamiento de juegos requieren una solicitud específica y aislamiento definido, incluso al validar código.
+- Las variables de las pruebas no prueban por sí mismas que esté bloqueado todo acceso al perfil o a la red. La inspección de sus consumidores sigue pendiente antes de ejecutar pruebas locales que puedan tener esos efectos.
+
+El primer ciclo manual entre las tres herramientas queda completado para la documentación: preparación de Codex, revisión de Claude, correcciones, segunda revisión de Claude y análisis independiente de Gemini con ajustes menores incorporados. Claude y Gemini no revisaron todavía este último ajuste de redacción. No se certifica el comportamiento funcional, los permisos remotos, las cuotas o un aislamiento técnico completo. Próximo ejercicio recomendado: inspección de sólo lectura del aislamiento de las pruebas, antes de ejecutar la aplicación o instalar dependencias.

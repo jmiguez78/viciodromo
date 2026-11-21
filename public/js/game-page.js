@@ -120,7 +120,7 @@ export function renderGamePage(game) {
   renderGameAside(game);
 }
 
-export async function openGamePage(game, origin) {
+export async function openGamePage(game, origin, { focusHeading = false } = {}) {
   if (!game) return;
   if (state.page !== 'game')
     gameReturn = { page: state.page, scroll: window.scrollY, key: game.key, origin: origin || null };
@@ -128,8 +128,10 @@ export async function openGamePage(game, origin) {
     renderGamePage(game);
     showPage('game');
     window.scrollTo(0, 0);
-    // El foco queda en la acción principal (Jugar o Instalar); Volver está a un Escape.
-    document.querySelector('#game-aside [data-action=play]').focus({ preventScroll: true });
+    // El sorteo anuncia el título; el resto de los accesos enfoca Jugar o Instalar. Escape vuelve.
+    document
+      .querySelector(focusHeading ? '#game-title' : '#game-aside [data-action=play]')
+      .focus({ preventScroll: true });
   };
   const art = origin?.querySelector('.poster-art, .row-thumb');
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -152,12 +154,13 @@ export function closeGamePage() {
   gameReturn = null;
   showPage(back.page, { focus: false });
   window.scrollTo(0, back.scroll || 0);
-  // El foco vuelve al juego desde el que se abrió la página.
+  // El foco vuelve al control de origen (tarjeta o sorteo); si ya no está disponible, a la búsqueda.
   const tile =
-    (back.origin?.isConnected && back.origin) ||
-    document.querySelector('#' + back.page + '-page .tile[data-key="' + CSS.escape(back.key || '') + '"]');
+    (back.origin?.isConnected && !back.origin.disabled && back.origin) ||
+    document.querySelector('#' + back.page + '-page .tile[data-key="' + CSS.escape(back.key || '') + '"]') ||
+    (back.page === 'library' && document.querySelector('#search'));
   if (tile) {
-    selectTile(tile, false);
+    if (tile.matches('.tile')) selectTile(tile, false);
     tile.focus({ preventScroll: true });
   }
 }

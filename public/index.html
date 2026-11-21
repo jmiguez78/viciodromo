@@ -140,6 +140,12 @@
             <p id="counter" role="status"></p>
             <div id="active-filters" class="active-filters" role="group" aria-label="Filtros activos"></div>
             <button id="clear-filters" type="button" class="text-button hidden">Quitar filtros</button>
+            <div class="random-choice">
+              <button id="random-game" type="button" class="button small" aria-describedby="random-help" disabled>
+                <span data-icon="shuffle"></span> Elegir al azar
+              </button>
+              <span id="random-help">Cargando los juegos para elegir.</span>
+            </div>
           </div>
           <p id="library-help" class="visually-hidden">
             Usá las flechas para moverte entre los juegos. En las portadas, Enter juega y Espacio abre la página del
@@ -540,7 +546,7 @@
               <span data-icon="back"></span> Volver
             </button>
             <div class="game-hero-content">
-              <h2 id="game-title" class="hero-title"></h2>
+              <h2 id="game-title" class="hero-title" tabindex="-1"></h2>
               <img id="game-wordmark" class="hero-wordmark" alt="" hidden />
               <p id="game-facts" class="hero-facts"></p>
             </div>

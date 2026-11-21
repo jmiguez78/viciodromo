@@ -881,6 +881,22 @@ La barra de la Biblioteca queda fija al bajar: buscar, cambiar de colección, or
 #library-page .active-filters {
   margin: 0;
 }
+#library-page .library-heading .random-choice {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+  max-width: 100%;
+}
+#random-help {
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: end;
+}
+#random-game:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .active-filter .icon {
   width: 14px;
   height: 14px;

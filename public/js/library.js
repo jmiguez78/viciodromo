@@ -2,6 +2,7 @@
 import { applyCover, coverInfo, pruneCoverLoads } from './art.js';
 import { bindTiles, cachedPoster, decorateActions, playButtonHtml, selectTile, setStatusTone } from './cards.js';
 import { icon } from './icons.js';
+import { openGamePage } from './game-page.js';
 import { load } from './main.js';
 import { remember, remembered, state } from './state.js';
 
@@ -200,6 +201,15 @@ export function renderLibraryState() {
 
 export function renderLibrary() {
   const entries = visibleEntries();
+  const randomButton = document.querySelector('#random-game');
+  randomButton.disabled = state.loading || Boolean(state.loadError) || entries.length === 0;
+  document.querySelector('#random-help').textContent = state.loading
+    ? 'Cargando los juegos para elegir.'
+    : state.loadError
+      ? 'La biblioteca debe cargarse antes de elegir.'
+      : entries.length === 0
+        ? 'No hay resultados para elegir. Probá otra búsqueda o quitá filtros.'
+        : 'Abre una ficha de estos resultados, sin iniciar el juego.';
   // Si el foco estaba dentro de la grilla, se recupera sobre el mismo juego y acción tras redibujar.
   const focused = library.contains(document.activeElement)
     ? {
@@ -481,6 +491,11 @@ export function setup() {
     renderLibrary();
   };
   document.querySelector('#clear-filters').onclick = clearFilters;
+  document.querySelector('#random-game').onclick = (event) => {
+    if (state.loading || state.loadError) return;
+    const entry = GMLCatalog.pickRandomEntry(visibleEntries());
+    if (entry) openGamePage(entry.game, event.currentTarget, { focusHeading: true });
+  };
   document.querySelectorAll('#collection [data-collection]').forEach((button) => {
     button.onclick = () => {
       state.collection = button.dataset.collection;

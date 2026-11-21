@@ -2,6 +2,7 @@
 
 // Iconos de trazo (estilo Lucide, licencia ISC) dibujados inline para no sumar dependencias.
 export const iconPaths = {
+  shuffle: '<path d="m18 3 3 3-3 3M18 15l3 3-3 3M3 6h3l12 12h3M3 18h3l4-4M14 10l4-4h3"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   filter: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',

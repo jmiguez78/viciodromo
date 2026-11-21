@@ -4,6 +4,42 @@ import '../public/catalog.js';
 
 const { filterGames, facetCounts, sortGames, collapseDuplicates, titleKey } = globalThis.GMLCatalog;
 const ready = { type: 'uri', target: 'x', available: true };
+
+test('elegir al azar cubre el primer y último resultado sin modificar la lista', () => {
+  const entries = [{ game: { key: 'a' } }, { game: { key: 'b' } }];
+  assert.equal(
+    GMLCatalog.pickRandomEntry([], () => 0),
+    null
+  );
+  assert.equal(
+    GMLCatalog.pickRandomEntry([entries[0]], () => 0.9),
+    entries[0]
+  );
+  assert.equal(
+    GMLCatalog.pickRandomEntry(entries, () => 0),
+    entries[0]
+  );
+  assert.equal(
+    GMLCatalog.pickRandomEntry(entries, () => 0.999999),
+    entries[1]
+  );
+  assert.deepEqual(
+    entries.map((entry) => entry.game.key),
+    ['a', 'b']
+  );
+});
+
+test('las copias entre tiendas no agregan oportunidades al elegir un título', () => {
+  const entries = collapseDuplicates([
+    { key: 'steam:1', name: 'Celeste', platform: 'Steam', launch: ready },
+    { key: 'gog:2', name: 'Celeste', platform: 'GOG Galaxy', launch: ready },
+    { key: 'epic:3', name: 'Hades', platform: 'Epic Games', launch: ready }
+  ]);
+  assert.equal(entries.length, 2);
+  assert.equal(GMLCatalog.pickRandomEntry(entries, () => 0).game.name, 'Celeste');
+  assert.equal(GMLCatalog.pickRandomEntry(entries, () => 0.75).game.name, 'Hades');
+});
+
 const games = [
   {
     key: 'a',

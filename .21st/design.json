@@ -62,6 +62,10 @@
   },
   "decisions": [
     {
+      "date": "2026-11-21",
+      "description": "Elegir al azar usa un botón secundario nativo junto al contador de Biblioteca, ayuda visible y retorno del foco contextual; reutiliza tokens y controles existentes."
+    },
+    {
       "date": "2026-10-23",
       "description": "Ficha con pestañas compactas, más espacio para el detalle y galería ampliable. Implementación con controles nativos y estilos del proyecto."
     }

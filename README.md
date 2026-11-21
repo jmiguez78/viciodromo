@@ -17,6 +17,7 @@ Es un lanzador para Windows, con instalador o portable (sin instalar), y sin pub
 - **Encuentra tus juegos instalados** en todas las unidades de la PC, en las seis tiendas (ver [cómo los encuentra](docs/operacion.md#cómo-se-encuentran-los-juegos-instalados)), y los junta con tu cuenta de Steam sin repetir los que compraste en varias tiendas.
 - **Inicio propone qué jugar**, con una imagen principal y filas por intención: Continuar, Favoritos, Instalados sin estrenar, Para una sesión corta, Lo mejor valorado, Clásicos del arcade y Para instalar.
 - **Biblioteca** en portadas o en tabla, con búsqueda, orden y filtros por tienda, género, duración, tiempo jugado, valoración y etiquetas. Aguanta miles de juegos.
+- **Elegir al azar** abre la ficha de uno de los resultados de Biblioteca, respetando tus filtros y sin iniciar el juego.
 - **Página de cada juego** con arte, logo, descripción en español, logros de Steam, ficha de IGDB, tus notas y **tus capturas y videos**.
 - **Jugar** abre el juego desde su tienda; la ventana se minimiza y, al cerrar el juego, vuelve con la duración de la sesión.
 - **Tu actividad**: horas por semana, racha, los más jugados y las últimas sesiones, medidas en todas las tiendas.

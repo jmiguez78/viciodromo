@@ -264,7 +264,13 @@
     );
   }
 
+  // Recibe los resultados ya filtrados y agrupados: cada título tiene una sola oportunidad.
+  function pickRandomEntry(entries, random = Math.random) {
+    return entries.length ? entries[Math.floor(random() * entries.length)] : null;
+  }
+
   root.GMLCatalog = {
+    pickRandomEntry,
     listGames,
     facets,
     titleKey,

@@ -1,5 +1,6 @@
 // Eventos del servidor (B7): la fila de tareas en segundo plano, la biblioteca cambiada y las sesiones medidas.
 // Reemplaza a los sondeos: la interfaz se entera sola cuando termina una búsqueda o se cierra un juego.
+import { describeDisplayFailure, goToDisplays } from './displays.js';
 import { notify } from './feedback.js';
 import { load } from './main.js';
 import { state } from './state.js';
@@ -60,6 +61,13 @@ export function setup() {
     window.dispatchEvent(new CustomEvent('gml-tasks', { detail: state.tasks }));
   });
   source.addEventListener('library', reloadSoon);
+  // No se pudo llevar un juego al monitor elegido: se abrió donde Windows quiso.
+  source.addEventListener('display', (event) => {
+    notify(describeDisplayFailure(JSON.parse(event.data)), {
+      type: 'info',
+      action: { label: 'Ver monitores', run: goToDisplays }
+    });
+  });
   source.addEventListener('session', (event) => {
     const session = JSON.parse(event.data);
     notify('Sesión de ' + minutesText(session.seconds) + ' en ' + session.name + '.', { type: 'success' });

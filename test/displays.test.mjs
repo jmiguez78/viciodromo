@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import {
   HELPER_SCRIPT,
   chooseDisplay,
+  cleanDisplayAliases,
   cleanDisplayRef,
   createDisplayHelper,
   describeChoice,
   describeDisplays,
   deviceFor,
+  displayRef,
   findDisplay,
-  placeArgs
+  placeArgs,
+  sameDisplayRef
 } from '../src/displays.mjs';
 
 const raw = [
@@ -63,6 +66,69 @@ test('cleanDisplayRef y findDisplay reconocen el monitor por identificador o por
   // Windows cambió el identificador (otro puerto, otro cable): se lo reconoce por el nombre.
   assert.equal(findDisplay(displays, { id: '999', label: 'LG TV SSCR2' }), lg);
   assert.equal(findDisplay(displays, { id: '999', label: 'Desconectado' }), null);
+});
+
+test('describeDisplays usa el alias como nombre y conserva el de fábrica', () => {
+  const named = describeDisplays(raw, [
+    { ...displayRef(lg), alias: ' Tele del living ' },
+    { id: '1', label: 'Proyector', alias: 'Proyector' }
+  ]);
+  assert.deepEqual(
+    named.map((item) => [item.number, item.name, item.detected, item.alias]),
+    [
+      [1, 'Odyssey G5', 'Odyssey G5', ''],
+      [2, 'Tele del living', 'LG TV SSCR2', 'Tele del living']
+    ]
+  );
+  assert.deepEqual(displayRef(lg), {
+    id: '2779098405',
+    label: 'LG TV SSCR2',
+    x: 2560,
+    y: 0,
+    width: 3840,
+    height: 2160
+  });
+  assert.deepEqual(cleanDisplayAliases([{ id: '1', label: 'X', alias: '' }, 'roto']), []);
+});
+
+test('findDisplay distingue dos monitores iguales por resolución y posición', () => {
+  const twins = describeDisplays([
+    {
+      id: 'a',
+      label: 'DELL U2720Q',
+      bounds: { x: 0, y: 0, width: 2560, height: 1440 },
+      physical: { x: 0, y: 0, width: 3840, height: 2160 }
+    },
+    {
+      id: 'b',
+      label: 'DELL U2720Q',
+      bounds: { x: 2560, y: 0, width: 1920, height: 1080 },
+      physical: { x: 3840, y: 0, width: 1920, height: 1080 }
+    },
+    {
+      id: 'c',
+      label: 'DELL U2720Q',
+      bounds: { x: 4480, y: 0, width: 1920, height: 1080 },
+      physical: { x: 5760, y: 0, width: 1920, height: 1080 }
+    }
+  ]);
+  assert.deepEqual(
+    twins.map((item) => item.detected),
+    ['DELL U2720Q (1)', 'DELL U2720Q (2)', 'DELL U2720Q (3)']
+  );
+  // Windows cambió los identificadores: se reconoce cada uno por resolución y posición.
+  const right = { ...displayRef(twins[2]), id: 'nuevo' };
+  assert.equal(findDisplay(twins, right), twins[2]);
+  assert.equal(
+    findDisplay(twins, { ...displayRef(twins[0]), id: 'nuevo', x: 99 }),
+    twins[0],
+    'única con esa resolución'
+  );
+  assert.equal(findDisplay(twins, { id: 'nuevo', label: 'DELL U2720Q' }), twins[0]);
+  assert.equal(sameDisplayRef(displayRef(twins[1]), { ...displayRef(twins[1]), id: 'otro' }), true);
+  assert.equal(sameDisplayRef(displayRef(twins[1]), { ...displayRef(twins[2]), id: 'otro' }), false);
+  assert.equal(sameDisplayRef({ id: '', label: 'DELL U2720Q' }, displayRef(twins[2])), true);
+  assert.equal(sameDisplayRef(null, displayRef(twins[2])), false);
 });
 
 test('chooseDisplay: el elegido para esta vez, después el predeterminado del juego y si no, Windows', () => {
@@ -149,11 +215,13 @@ test('createDisplayHelper en Windows: monitores para MAME y ayudante para mover 
   assert.deepEqual(await helper.mameArgs(lg), ['-screen', '\\\\.\\DISPLAY2']);
   await helper.mameArgs(lg);
   assert.equal(calls.filter(([kind]) => kind === 'exec').length, 1, 'la lista de monitores se recuerda');
-  assert.equal(await helper.place(['c:\\juegos\\ac\\'], lg, 'steam:244210'), true);
+  const results = [];
+  assert.equal(await helper.place(['c:\\juegos\\ac\\'], lg, 'steam:244210', (result) => results.push(result)), true);
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.at(-1)[1], 'powershell.exe');
   assert.ok(calls.at(-1)[2].includes('place'));
   assert.deepEqual(logs.at(-1), ['info', 'monitor', 'steam:244210 → LG TV SSCR2: pantalla-completa']);
+  assert.deepEqual(results, [{ ok: true }]);
   t.after(() => import('node:fs/promises').then((fs) => fs.rm(tempDir, { recursive: true, force: true })));
 });

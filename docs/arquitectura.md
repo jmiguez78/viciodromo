@@ -46,7 +46,7 @@ flowchart LR
 | `events.js`                                           | Eventos del servidor: fila de tareas, biblioteca cambiada y sesiones medidas               |
 | `activity.js`, `onboarding.js`                        | Tu actividad y Primeros pasos                                                              |
 | `lists.js`                                            | Listas propias: filas de Inicio, filtro de la Biblioteca y diálogos                        |
-| `displays.js`                                         | Monitor de cada juego: Jugar ▾ en la página del juego y selector de Editar                 |
+| `displays.js`                                         | Monitor de cada juego: Jugar ▾, selector de Editar y Configuración → Monitores             |
 
 `npm run check` comprueba la sintaxis de todo `src/` y de los scripts de la interfaz (`tools/check-syntax.mjs`), que cada `import` exista en su módulo de origen (`tools/check-modules.mjs`) y las reglas de los estilos (`tools/check-styles.mjs`). `window.GML` expone el estado y la navegación para depurar desde la consola.
 

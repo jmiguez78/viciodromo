@@ -7,7 +7,10 @@
 - **Jugar ▾.** En la página del juego, la flecha al lado de **Jugar** muestra los monitores conectados: elegís uno y el juego se abre ahí sólo esa vez. Al volver a Viciódromo, un aviso ofrece **Usar siempre ese monitor** para ese juego.
 - **Monitor predeterminado.** Cuando un juego tiene uno elegido, **Jugar** muestra su nombre debajo y lo usa siempre, también desde Inicio, la Biblioteca y la lista de juegos recientes del ícono de la barra de tareas. Se cambia (o se vuelve al principal) en **Editar → Monitor**.
 - **Modo sala:** la ficha del juego suma **Jugar en…** cada uno de los otros monitores.
-- Los monitores se reconocen por su nombre (por ejemplo «LG TV SSCR2»), así la elección no se pierde si Windows los renumera al apagar la tele o cambiar un cable. Si el monitor elegido no está conectado, el juego se abre en el principal.
+- **Configuración → Monitores.** Cada monitor detectado con su número, resolución y cuántos juegos abren ahí, y un campo para ponerle un nombre propio («Escritorio», «Tele del living»): es el que se ve en Jugar ▾, en Editar y en el modo sala. **Identificar** muestra unos segundos el número de cada monitor en su pantalla, para saber cuál es cuál. Los que tienen juegos o nombre pero no están conectados aparecen con **Olvidar**: sus juegos vuelven al principal.
+- Con más de un monitor, **Primeros pasos** suma el paso **Tus monitores**, y Jugar ▾ ofrece **Ponerles nombre…** mientras ninguno tenga. Con un solo monitor no aparece nada de esto.
+- Los monitores se reconocen por su identificador de Windows y, si cambia (al apagar la tele o cambiar un cable), por su nombre de fábrica; entre dos monitores iguales, por resolución y posición. Si el monitor elegido no está conectado, el juego se abre en el principal.
+- Si no se pudo llevar el juego al monitor (no apareció su ventana, el juego no se dejó mover o Windows bloqueó el ayudante), un aviso lo dice en lugar de quedar en silencio.
 - **Arcade:** MAME abre directamente en el monitor elegido. En los demás juegos, Viciódromo espera a que aparezca la ventana del juego y la lleva al monitor; funciona en ventana, maximizado y en pantalla completa sin bordes. Los juegos en pantalla completa exclusiva pueden quedarse en el principal: para esos va a llegar una opción más fuerte.
 - Al jugar, la pantalla «Iniciando…» avisa en qué monitor se abre.
 

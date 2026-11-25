@@ -2398,3 +2398,55 @@ a.meta-source {
 .play-menu-item:focus-visible {
   background: var(--surface-soft);
 }
+
+/* Configuración → Monitores: número, nombre propio y datos de cada monitor. */
+.display-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.display-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.display-number {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-weight: 800;
+}
+.display-fields {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.display-fields input {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+}
+.display-fields small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.display-item.offline .display-number {
+  color: var(--muted);
+}
+.play-menu-link {
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0 0 8px 8px;
+  color: var(--accent-text);
+}

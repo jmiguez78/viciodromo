@@ -23,14 +23,43 @@ const rect = (value) =>
       }
     : null;
 
-// Monitores como los informa Electron, ordenados de izquierda a derecha. `name` es el nombre del monitor (por ejemplo
-// «LG TV SSCR2»); sin nombre, o con dos iguales, se numeran.
-export function describeDisplays(raw = []) {
+export const MAX_DISPLAY_ALIASES = 20;
+const area = (display) => display.physical ?? display.bounds;
+const text = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+
+// Lo que se guarda de un monitor: su identificador, su nombre de fábrica y, como desempate entre dos monitores
+// iguales, su resolución y posición (en píxeles físicos). Si Windows cambia el identificador (otro cable, otro
+// puerto), se lo reconoce por el nombre.
+export function cleanDisplayRef(value) {
+  if (!value || typeof value !== 'object') return null;
+  const id = text(value.id, 64);
+  const label = text(value.label, 120);
+  if (!id && !label) return null;
+  const geometry = rect(value);
+  return geometry ? { id, label, ...geometry } : { id, label };
+}
+
+export const displayRef = (display) => ({ id: display.id, label: display.label || display.detected, ...area(display) });
+
+// Nombres propios de los monitores: [{ ...ref, alias }].
+export function cleanDisplayAliases(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => ({ ref: cleanDisplayRef(item), alias: text(item?.alias, 40) }))
+    .filter((item) => item.ref && item.alias)
+    .slice(0, MAX_DISPLAY_ALIASES)
+    .map((item) => ({ ...item.ref, alias: item.alias }));
+}
+
+// Monitores como los informa Electron, ordenados de izquierda a derecha y numerados así (`number`, el que muestra
+// «Identificar»). `detected` es el nombre de fábrica (por ejemplo «LG TV SSCR2»; sin nombre, o con dos iguales, se
+// numeran); `name`, el alias si se le puso uno.
+export function describeDisplays(raw = [], aliases = []) {
   const list = (Array.isArray(raw) ? raw : [])
     .filter((item) => item && item.id !== undefined && rect(item.bounds))
     .map((item) => ({
       id: String(item.id),
-      label: typeof item.label === 'string' ? item.label.trim().slice(0, 120) : '',
+      label: text(item.label, 120),
       primary: item.primary === true,
       bounds: rect(item.bounds),
       physical: rect(item.physical)
@@ -39,33 +68,43 @@ export function describeDisplays(raw = []) {
   const count = new Map();
   for (const item of list) count.set(item.label, (count.get(item.label) ?? 0) + 1);
   const seen = new Map();
-  return list.map((item, index) => {
+  const described = list.map((item, index) => {
     const repeated = count.get(item.label) > 1;
     const order = (seen.get(item.label) ?? 0) + 1;
     seen.set(item.label, order);
-    const name = !item.label ? `Monitor ${index + 1}` : repeated ? `${item.label} (${order})` : item.label;
-    return { ...item, name };
+    const detected = !item.label ? `Monitor ${index + 1}` : repeated ? `${item.label} (${order})` : item.label;
+    return { ...item, number: index + 1, detected, alias: '', name: detected };
   });
+  for (const entry of cleanDisplayAliases(aliases)) {
+    const display = findDisplay(described, entry);
+    if (display && !display.alias) Object.assign(display, { alias: entry.alias, name: entry.alias });
+  }
+  return described;
 }
-
-// Lo que se guarda de un monitor: su identificador y su nombre (si el identificador cambia, se lo reconoce por nombre).
-export function cleanDisplayRef(value) {
-  if (!value || typeof value !== 'object') return null;
-  const id = typeof value.id === 'string' ? value.id.trim().slice(0, 64) : '';
-  const label = typeof value.label === 'string' ? value.label.trim().slice(0, 120) : '';
-  return id || label ? { id, label } : null;
-}
-
-export const displayRef = (display) => ({ id: display.id, label: display.label || display.name });
 
 export function findDisplay(list, ref) {
   const clean = cleanDisplayRef(ref);
-  if (!clean) return null;
-  return (
-    (clean.id && list.find((item) => item.id === clean.id)) ||
-    (clean.label && list.find((item) => item.label === clean.label || item.name === clean.label)) ||
-    null
-  );
+  if (!clean || !Array.isArray(list)) return null;
+  const byId = clean.id && list.find((item) => item.id === clean.id);
+  if (byId) return byId;
+  if (!clean.label) return null;
+  const named = list.filter((item) => item.label === clean.label || item.detected === clean.label);
+  if (named.length < 2) return named[0] ?? null;
+  // Dos monitores iguales: el de la misma resolución y posición; si no, el de la misma resolución.
+  const size = named.filter((item) => area(item).width === clean.width && area(item).height === clean.height);
+  const place = size.find((item) => area(item).x === clean.x && area(item).y === clean.y);
+  return place ?? (size.length === 1 ? size[0] : named[0]);
+}
+
+// Si dos referencias guardadas son del mismo monitor (para olvidar uno que ya no está conectado).
+export function sameDisplayRef(a, b) {
+  const left = cleanDisplayRef(a);
+  const right = cleanDisplayRef(b);
+  if (!left || !right) return false;
+  if (left.id && left.id === right.id) return true;
+  if (!left.label || left.label !== right.label) return false;
+  const geometry = (ref) => [ref.x, ref.y, ref.width, ref.height].join(',');
+  return left.width === undefined || right.width === undefined || geometry(left) === geometry(right);
 }
 
 // A qué monitor va un juego: { display, source: 'once' | 'game' } o null (se deja a Windows). `once` es el elegido
@@ -230,21 +269,19 @@ public static class ViciodromoDisplays {
     int width = rect.Right - rect.Left, height = rect.Bottom - rect.Top;
     int targetWidth = target.Right - target.Left, targetHeight = target.Bottom - target.Top;
     if (rect.Left <= from.Left && rect.Top <= from.Top && rect.Right >= from.Right && rect.Bottom >= from.Bottom) {
-      SetWindowPos(window, IntPtr.Zero, target.Left, target.Top, targetWidth, targetHeight, NOZORDER | NOACTIVATE);
-      return "pantalla-completa";
+      return SetWindowPos(window, IntPtr.Zero, target.Left, target.Top, targetWidth, targetHeight, NOZORDER | NOACTIVATE) ? "pantalla-completa" : "bloqueada";
     }
     if (IsZoomed(window)) {
       ShowWindow(window, 9);
       GetWindowRect(window, out rect);
       width = rect.Right - rect.Left; height = rect.Bottom - rect.Top;
-      SetWindowPos(window, IntPtr.Zero, target.Left + Math.Max(0, (targetWidth - width) / 2), target.Top + Math.Max(0, (targetHeight - height) / 2), 0, 0, NOSIZE | NOZORDER | NOACTIVATE);
+      bool moved = SetWindowPos(window, IntPtr.Zero, target.Left + Math.Max(0, (targetWidth - width) / 2), target.Top + Math.Max(0, (targetHeight - height) / 2), 0, 0, NOSIZE | NOZORDER | NOACTIVATE);
       ShowWindow(window, 3);
-      return "maximizada";
+      return moved ? "maximizada" : "bloqueada";
     }
     int x = target.Left + Math.Max(0, Math.Min(rect.Left - from.Left, targetWidth - width));
     int y = target.Top + Math.Max(0, Math.Min(rect.Top - from.Top, targetHeight - height));
-    SetWindowPos(window, IntPtr.Zero, x, y, 0, 0, NOSIZE | NOZORDER | NOACTIVATE);
-    return "ventana";
+    return SetWindowPos(window, IntPtr.Zero, x, y, 0, 0, NOSIZE | NOZORDER | NOACTIVATE) ? "ventana" : "bloqueada";
   }
 }
 '@
@@ -263,6 +300,7 @@ $folders = [string[]]@($Roots.Split('|') | Where-Object { $_ } | ForEach-Object 
 $moves = @{}
 $start = Get-Date
 $first = $null
+$placed = $false
 while ($true) {
   $now = Get-Date
   if ($first) { if (($now - $first).TotalSeconds -gt $Settle) { break } }
@@ -270,7 +308,9 @@ while ($true) {
   foreach ($window in [ViciodromoDisplays]::Windows($folders)) {
     $key = [string]$window
     $count = [int]$moves[$key]
-    if ($count -ge 3 -or [ViciodromoDisplays]::OnMonitor($window, $monitor.Rect)) {
+    $there = [ViciodromoDisplays]::OnMonitor($window, $monitor.Rect)
+    if ($there) { $placed = $true }
+    if ($count -ge 3 -or $there) {
       if (-not $first) { $first = Get-Date }
       continue
     }
@@ -281,7 +321,10 @@ while ($true) {
   }
   Start-Sleep -Milliseconds 500
 }
-exit 0
+# Ninguna ventana quedó en el monitor: el juego no se dejó mover (pantalla completa exclusiva o administrador).
+if ($placed) { exit 0 }
+Write-Output 'no-se-movio'
+exit 4
 `;
 
 // El ayudante se escribe una vez por versión del script en la carpeta temporal y se ejecuta con -File.
@@ -334,8 +377,9 @@ export function createDisplayHelper({
       const device = deviceFor(await this.monitors(), display);
       return device ? ['-screen', device] : [];
     },
-    // Busca las ventanas del juego y las lleva al monitor. No espera: el ayudante termina solo.
-    async place(roots, display, label = '') {
+    // Busca las ventanas del juego y las lleva al monitor. No espera: el ayudante termina solo y avisa con
+    // onResult({ ok, reason }); reason: 'no-window' (no apareció), 'not-moved' (no se dejó mover) o 'error'.
+    async place(roots, display, label = '', onResult = () => {}) {
       if (platform !== 'win32' || !roots.length) return false;
       const file = await script();
       const child = spawnImpl('powershell.exe', placeArgs(file, roots, display), {
@@ -345,11 +389,19 @@ export function createDisplayHelper({
       const output = [];
       child.stdout?.on('data', (chunk) => output.push(String(chunk)));
       child.stderr?.on('data', (chunk) => output.push(String(chunk)));
-      child.once('error', (error) => log('warn', 'monitor', `${label}: no se pudo mover la ventana: ${error.message}`));
+      child.once('error', (error) => {
+        log('warn', 'monitor', `${label}: no se pudo mover la ventana: ${error.message}`);
+        onResult({ ok: false, reason: 'error' });
+      });
       child.once('exit', (code) => {
         const result = output.join('').split(/\r?\n/).filter(Boolean).slice(-4).join(', ') || 'sin salida';
         const level = code === 0 ? 'info' : 'warn';
         log(level, 'monitor', `${label} → ${display.name}: ${code === 3 ? 'no apareció la ventana' : result}`);
+        onResult(
+          code === 0
+            ? { ok: true }
+            : { ok: false, reason: code === 3 ? 'no-window' : code === 4 ? 'not-moved' : 'error' }
+        );
       });
       return true;
     }

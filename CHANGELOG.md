@@ -1,6 +1,6 @@
 # Registro de cambios
 
-## Próxima versión
+## 0.40.0
 
 **Cada juego en su monitor.** Con dos monitores o más, elegís en cuál se abre cada juego: por ejemplo, los de carreras en la tele del volante y el resto en el monitor principal.
 

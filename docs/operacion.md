@@ -55,6 +55,14 @@ Las capturas (`.png`, `.jpg`, `.webp`) y los videos (`.mp4`, `.webm`) se leen en
 
 Los nombres se comparan sin tildes, marcas ni signos; si el nombre de la captura es el comienzo de un solo juego («Control» → «Control Ultimate Edition») también se asocia, pero no si hay varios posibles. Los juegos de Arcade no se asocian por nombre. Para las pruebas, `GML_STEAM_DIR`, `GML_VIDEOS_DIR` y `GML_CAPTURES_DIR` reemplazan las carpetas reales.
 
+## Monitor de cada juego
+
+Con más de un monitor, cada juego puede abrirse en uno elegido (`src/displays.mjs`). El orden es: el monitor de la ficha del juego, la primera regla de **Configuración → Monitor de cada juego** cuya etiqueta tenga el juego y, si no hay ninguna, nada (Windows lo abre donde siempre). Se guardan el identificador del monitor que da Electron y su nombre, y se lo busca por los dos: si el identificador cambia, alcanza con el nombre. Un monitor elegido que no está conectado se ignora.
+
+- **Arcade:** antes de abrir MAME se busca el dispositivo de Windows del monitor (`\\.\DISPLAYn`, por el centro de su rectángulo en píxeles físicos) y se lo pasa con `-screen`, que tiene prioridad sobre `mame.ini`.
+- **Resto:** después de lanzar el juego, un ayudante de PowerShell espera hasta 4 minutos (lo que tarda un lanzador como Epic o EA) una ventana visible de un proceso que corra desde la carpeta del juego, la lleva al monitor y sigue mirando 30 segundos más, por si el juego cambia de ventana al terminar de cargar (cada ventana se reubica a lo sumo tres veces). Juegos sin carpeta de instalación conocida no se pueden mover.
+- El resultado queda en el registro (`monitor`): `pantalla-completa`, `maximizada`, `ventana`, `ya-estaba` o «no apareció la ventana».
+
 ## Dónde se guardan los datos
 
 - **Desarrollo** (`npm start`, `npm run desktop`): en `data/` dentro del proyecto (excluida del repositorio).

@@ -1,6 +1,7 @@
 // Editar un juego: preferencias, lanzamiento personalizado y portada propia.
 import { request, tagsOf } from './api.js';
 import { posterCache } from './cards.js';
+import { automaticHint, displayFromValue, displayOptions, displays, loadDisplays } from './displays.js';
 import { clearFieldError, notify, setFormError, showFormErrors, undoPreference } from './feedback.js';
 import { gamePage, renderGameAside } from './game-page.js';
 import { renderHome } from './home.js';
@@ -37,8 +38,22 @@ export function editGame(game) {
   document.querySelector('#launch-type').value = game.launchOverride?.type || '';
   document.querySelector('#launch-target').value = game.launchOverride?.target || '';
   syncLaunchTarget();
+  fillDisplayField(game);
   showFormErrors(editor.querySelector('form'), []);
   editor.showModal();
+  // Un monitor pudo conectarse o desconectarse desde la última vez.
+  loadDisplays().then(() => {
+    if (editing === game && editor.open) fillDisplayField(game, document.querySelector('#display-input').value);
+  });
+}
+
+// Monitor del juego: sólo con más de un monitor (o si ya tenía uno elegido).
+function fillDisplayField(game, value) {
+  const select = document.querySelector('#display-input');
+  document.querySelector('#display-fieldset').hidden = !displays.supported && !game.display;
+  select.innerHTML = displayOptions(game.display, { automatic: 'Automático' });
+  if (value !== undefined && [...select.options].some((option) => option.value === value)) select.value = value;
+  document.querySelector('#display-help').textContent = automaticHint(game);
 }
 
 export const launchPlaceholders = {
@@ -120,7 +135,8 @@ export function setup() {
       progress: game.progress || 'Pendiente',
       rating: Number(game.rating) || 0,
       notes: game.notes || '',
-      launchOverride: game.launchOverride || null
+      launchOverride: game.launchOverride || null,
+      display: game.display || null
     };
     const type = document.querySelector('#launch-type').value;
     const target = document.querySelector('#launch-target').value.trim();
@@ -135,7 +151,8 @@ export function setup() {
         progress: document.querySelector('#progress-input').value,
         rating: Number(document.querySelector('#rating-input').value),
         notes: document.querySelector('#notes-input').value,
-        launchOverride: type ? { type, target } : null
+        launchOverride: type ? { type, target } : null,
+        display: displayFromValue(document.querySelector('#display-input').value, game.display || null)
       });
       if (cover) {
         try {

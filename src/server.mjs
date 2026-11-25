@@ -11,7 +11,15 @@ import { createIgdb, imageUrl } from './igdb.mjs';
 import { createSteam, mergeSteamLibrary } from './steam.mjs';
 import { createSteamAssets } from './steam-assets.mjs';
 import { createArcade } from './mame.mjs';
-import { createSessionLog, createSessionTracker } from './sessions.mjs';
+import { createSessionLog, createSessionTracker, gameRoots } from './sessions.mjs';
+import {
+  chooseDisplay,
+  cleanDisplayRef,
+  cleanDisplayRules,
+  createDisplayHelper,
+  describeChoice,
+  describeDisplays
+} from './displays.mjs';
 import { createTaskHub } from './tasks.mjs';
 import { buildActivity } from './activity.mjs';
 import { copyToPortable, portableFolder } from './portable.mjs';
@@ -141,6 +149,8 @@ const arcade = createArcade(dataDir);
 // MAME alternativo: un MAME más viejo para los juegos que el principal no puede correr (ver arcadeGames).
 const legacyArcade = createArcade(dataDir, { slot: 'legacy' });
 const arcadeFor = (game) => (game?.arcade?.engine === 'legacy' ? legacyArcade : arcade);
+// Monitor de cada juego (ver displays.mjs): en Windows mueve la ventana del juego o le indica la pantalla a MAME.
+const displayHelper = createDisplayHelper({ log });
 // Juegos de Arcade de los dos MAME: del alternativo sólo los que el principal no tiene (ni como versión regional
 // ni con el mismo título), para que cada juego aparezca una vez y se abra con el MAME que lo corre.
 const normalizedTitle = (name) =>
@@ -526,6 +536,7 @@ const buildLibrary = memo((catalog, prefs, metadata, account, arcadeList) => {
         rating: 0,
         notes: '',
         lastLaunchedAt: null,
+        display: null,
         ...saved,
         launch: safeOverride(saved.launchOverride) ?? game.launch
       };
@@ -672,6 +683,12 @@ function gameUpdate(current, update) {
   if (Number.isInteger(update.rating) && update.rating >= 0 && update.rating <= 5) next.rating = update.rating;
   if (typeof update.notes === 'string') next.notes = update.notes.slice(0, 4000);
   if ('launchOverride' in update) next.launchOverride = safeOverride(update.launchOverride);
+  // Monitor elegido en la ficha; null vuelve a lo automático (regla por etiqueta o monitor principal).
+  if ('display' in update) {
+    const display = cleanDisplayRef(update.display);
+    if (display) next.display = display;
+    else delete next.display;
+  }
   return next;
 }
 function importedGame(saved) {
@@ -714,7 +731,9 @@ export async function appSettings() {
     // «Primeros pasos» en Inicio: oculto si se descartó.
     onboardingDismissed: settings.onboardingDismissed === true,
     // Horas jugadas: 'all' suma lo que informan otras plataformas (Steam); 'viciodromo', sólo lo medido acá.
-    playtime: playtimeModes.includes(settings.playtime) ? settings.playtime : 'all'
+    playtime: playtimeModes.includes(settings.playtime) ? settings.playtime : 'all',
+    // Monitor por etiqueta: [{ tag, display }] (ver displays.mjs).
+    displayRules: cleanDisplayRules(settings.displayRules)
   };
 }
 // Sesiones medidas por el launcher: Arcade (abre y ve cerrarse a MAME) y, en Windows, cualquier juego con
@@ -796,9 +815,25 @@ export function createServer({
   onRestart,
   onLibraryChange,
   listProcesses,
+  // Monitores conectados, como los informa Electron (la aplicación de escritorio); sin ella, ninguno.
+  listDisplays = () => [],
   autoUpdate = noAutoUpdate
 } = {}) {
   const router = createRouter();
+  async function connectedDisplays() {
+    try {
+      return describeDisplays(await listDisplays());
+    } catch (error) {
+      log('warn', 'monitor', `No se pudo leer la lista de monitores: ${error.message}`);
+      return [];
+    }
+  }
+  // Con un solo monitor no hay nada que elegir: el juego abre donde siempre.
+  async function displayFor(game) {
+    const list = await connectedDisplays();
+    if (!displayHelper.supported || list.length < 2) return null;
+    return chooseDisplay(game, (await appSettings()).displayRules, list);
+  }
   // Al cerrarse un juego medido: se guarda la sesión y la ventana vuelve al frente.
   async function finishSession(game, session) {
     const entry = await recordSession(game, session).catch((error) => {
@@ -826,6 +861,21 @@ export function createServer({
     appSettings,
     themes,
     playtimeModes,
+    cleanDisplayRules,
+    async displays() {
+      const list = await connectedDisplays();
+      return {
+        supported: displayHelper.supported && list.length > 1,
+        displays: list.map(({ id, label, name, primary, bounds, physical }) => ({
+          id,
+          label,
+          name,
+          primary,
+          width: (physical ?? bounds).width,
+          height: (physical ?? bounds).height
+        }))
+      };
+    },
     steam,
     igdb,
     arcade,
@@ -923,17 +973,35 @@ export function createServer({
     },
     async play(game, key) {
       let tracked = false;
+      const choice = await displayFor(game).catch(() => null);
       if (game.launch?.type === 'mame') {
         tracked = true;
-        await arcadeFor(game).launch(key.slice('arcade:'.length), async (seconds) => {
-          const start = new Date(Date.now() - seconds * 1000).toISOString();
-          await finishSession(game, { start, seconds, source: 'mame' });
-        });
+        // A MAME se le indica la pantalla al abrirlo; su pantalla completa no se deja mover después.
+        const screen = choice ? await displayHelper.mameArgs(choice.display) : [];
+        if (choice && !screen.length)
+          log('warn', 'monitor', `${game.key}: no se encontró la pantalla de Windows de ${choice.display.name}`);
+        await arcadeFor(game).launch(
+          key.slice('arcade:'.length),
+          async (seconds) => {
+            const start = new Date(Date.now() - seconds * 1000).toISOString();
+            await finishSession(game, { start, seconds, source: 'mame' });
+          },
+          screen
+        );
       } else {
         await launch(game);
         tracked = tracker.track(game);
+        if (choice) {
+          const roots = gameRoots(game);
+          if (roots.length) await displayHelper.place(roots, choice.display, game.key).catch(() => false);
+          else log('info', 'monitor', `${game.key}: sin carpeta de instalación conocida, no se puede mover de monitor`);
+        }
       }
-      log('info', 'juego', `Iniciado ${game.key} (${game.launch?.type ?? 'sin tipo'})`);
+      log(
+        'info',
+        'juego',
+        `Iniciado ${game.key} (${game.launch?.type ?? 'sin tipo'})${choice ? ` en ${describeChoice(choice)}` : ''}`
+      );
       await updatePreferences((prefs) => {
         prefs.games[game.key] = { ...(prefs.games[game.key] ?? {}), lastLaunchedAt: new Date().toISOString() };
       });
@@ -941,7 +1009,8 @@ export function createServer({
       // La aplicación de escritorio se minimiza para dejar el juego adelante.
       const minimize = (await appSettings()).minimizeOnLaunch;
       if (minimize) setTimeout(() => onLaunch?.(game), 1200);
-      return { ok: true, minimize, tracked };
+      const display = choice ? { name: choice.display.name, source: choice.source, tag: choice.tag ?? null } : null;
+      return { ok: true, minimize, tracked, display };
     },
     async importPreferences(imported) {
       const games = Object.fromEntries(

@@ -38,6 +38,8 @@ export function preferencesRoutes(router, d) {
     return { coverFile: file };
   });
   router.get('/api/settings', () => d.appSettings());
+  // Monitores conectados, para elegir el de cada juego (sólo en la aplicación de escritorio de Windows).
+  router.get('/api/displays', () => d.displays());
   router.put('/api/settings', async ({ body }) => {
     const update = await body();
     const patch = {};
@@ -46,6 +48,10 @@ export function preferencesRoutes(router, d) {
       patch.minimizeOnLaunch = check.boolean(update.minimizeOnLaunch, 'Valor no válido para minimizar al jugar.');
     if ('playtime' in update)
       patch.playtime = check.oneOf(update.playtime, d.playtimeModes, 'Opción no válida para las horas jugadas.');
+    if ('displayRules' in update) {
+      if (!Array.isArray(update.displayRules)) throw badRequest('Las reglas de monitor no son válidas.');
+      patch.displayRules = d.cleanDisplayRules(update.displayRules);
+    }
     if ('onboardingDismissed' in update)
       patch.onboardingDismissed = check.boolean(update.onboardingDismissed, 'Valor no válido.');
     if (!Object.keys(patch).length) throw badRequest('No hay cambios para guardar.');

@@ -258,7 +258,8 @@ test('guarda el tema y lo conserva al restaurar un respaldo', async () => {
     theme: 'dark',
     minimizeOnLaunch: true,
     onboardingDismissed: false,
-    playtime: 'all'
+    playtime: 'all',
+    displayRules: []
   });
   const invalid = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ theme: 'rosa' }) });
   assert.equal(invalid.status, 400);
@@ -267,14 +268,16 @@ test('guarda el tema y lo conserva al restaurar un respaldo', async () => {
     theme: 'light',
     minimizeOnLaunch: true,
     onboardingDismissed: false,
-    playtime: 'all'
+    playtime: 'all',
+    displayRules: []
   });
   const minimize = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ minimizeOnLaunch: false }) });
   assert.deepEqual(await minimize.json(), {
     theme: 'light',
     minimizeOnLaunch: false,
     onboardingDismissed: false,
-    playtime: 'all'
+    playtime: 'all',
+    displayRules: []
   });
   assert.equal(
     (await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ minimizeOnLaunch: 'sí' }) })).status,
@@ -289,8 +292,33 @@ test('guarda el tema y lo conserva al restaurar un respaldo', async () => {
     theme: 'light',
     minimizeOnLaunch: false,
     onboardingDismissed: false,
-    playtime: 'all'
+    playtime: 'all',
+    displayRules: []
   });
+});
+
+test('monitor de cada juego: reglas por etiqueta y monitor en la ficha', async () => {
+  // Fuera de la aplicación de escritorio de Windows no hay monitores para elegir.
+  assert.deepEqual(await (await fetch(`${base}/api/displays`)).json(), { supported: false, displays: [] });
+  const rules = [
+    { tag: 'Sim Racing', display: { id: '2779098405', label: 'LG TV SSCR2' } },
+    { tag: 'sim racing', display: { id: '1', label: 'Otro' } },
+    { tag: '', display: { id: '1' } }
+  ];
+  const saved = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ displayRules: rules }) });
+  assert.deepEqual((await saved.json()).displayRules, [rules[0]]);
+  assert.equal((await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ displayRules: 'LG' }) })).status, 400);
+  await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ displayRules: [] }) });
+  const display = { id: '2779098405', label: 'LG TV SSCR2' };
+  const game = await fetch(`${base}/api/preferences`, { method: 'PUT', ...json({ key: 'steam:10', display }) });
+  assert.deepEqual((await game.json()).display, display);
+  const listed = (await (await fetch(`${base}/api/library`)).json()).games.find((item) => item.key === 'steam:10');
+  assert.deepEqual(listed.display, display);
+  const automatic = await fetch(`${base}/api/preferences`, {
+    method: 'PUT',
+    ...json({ key: 'steam:10', display: null })
+  });
+  assert.equal('display' in (await automatic.json()), false);
 });
 
 test('Primeros pasos: juegos por tienda, conexiones y descartar', async () => {

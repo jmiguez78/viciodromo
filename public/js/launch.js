@@ -58,9 +58,11 @@ export async function playGame(game, version) {
     const result = await request('/api/launch/' + encodeURIComponent(key), { method: 'POST' });
     game.lastLaunchedAt = new Date().toISOString();
     launchOverlay.classList.add('done');
-    document.querySelector('#launch-message').textContent = result.minimize
-      ? 'Listo. Que lo disfrutes.'
-      : 'Listo. El juego se está abriendo.';
+    document.querySelector('#launch-message').textContent = result.display
+      ? 'Listo. Se abre en ' + result.display.name + '.'
+      : result.minimize
+        ? 'Listo. Que lo disfrutes.'
+        : 'Listo. El juego se está abriendo.';
     launchTimer = setTimeout(hideLaunchOverlay, 2600);
     posterCache.delete(game.key);
     renderHome();

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, screen, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -161,8 +161,21 @@ async function playFromJumpList(key) {
       });
   }
 }
+// Monitores conectados para elegir el de cada juego (ver displays.mjs). En Windows se suma el rectángulo en píxeles
+// físicos, el que usan las ventanas de los juegos y MAME (con escalas distintas por monitor no coincide con bounds).
+function listDisplays() {
+  const primary = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((display) => ({
+    id: display.id,
+    label: display.label,
+    primary: display.id === primary,
+    bounds: display.bounds,
+    physical: isWindows ? screen.dipToScreenRect(null, display.bounds) : null
+  }));
+}
 const callbacks = {
   onLaunch: () => window?.minimize(),
+  listDisplays,
   onLibraryChange: refreshJumpListSoon,
   // Después de copiar los datos junto al .exe: se vuelve a abrir el portable (no la copia temporal).
   onRestart: () => {

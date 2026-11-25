@@ -2319,3 +2319,44 @@ a.meta-source {
   font: inherit;
   resize: vertical;
 }
+
+/* Monitor de cada juego (Configuración): reglas «etiqueta → monitor». */
+.display-rules {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+.display-rule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.3fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.display-rule input,
+.display-rule select {
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+}
+.display-rule-arrow {
+  color: var(--ink-soft);
+}
+.display-rule-form {
+  display: grid;
+  gap: 7px;
+}
+@media (max-width: 640px) {
+  .display-rule {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .display-rule-arrow {
+    display: none;
+  }
+}

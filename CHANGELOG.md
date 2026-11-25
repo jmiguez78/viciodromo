@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## Próxima versión
+
+**Cada juego en su monitor.** Con dos monitores o más, elegís en cuál se abre cada juego: por ejemplo, los de carreras en la tele del volante y el resto en el monitor principal.
+
+- **Por etiqueta.** En **Configuración → Monitor de cada juego** armás reglas «etiqueta → monitor»: todos los juegos con la etiqueta **Sim Racing** se abren en la tele, sin tocarlos uno por uno.
+- **Por juego.** La ficha de cada juego tiene un selector **Monitor**. Lo que elijas ahí tiene prioridad sobre las reglas; en **Automático** se aplica la regla de sus etiquetas o, si no tiene, el monitor principal, como hasta ahora.
+- Los monitores se reconocen por su nombre (por ejemplo «LG TV SSCR2»), así la elección no se pierde si Windows los renumera al apagar la tele o cambiar un cable. Si el monitor elegido no está conectado, el juego se abre en el principal.
+- **Arcade:** MAME abre directamente en el monitor elegido. En los demás juegos, Viciódromo espera a que aparezca la ventana del juego y la lleva al monitor; funciona en ventana, maximizado y en pantalla completa sin bordes. Los juegos en pantalla completa exclusiva pueden quedarse en el principal: para esos va a llegar una opción más fuerte.
+- Al jugar, la pantalla «Iniciando…» avisa en qué monitor se abre.
+
 ## 0.39.0
 
 **El mando ya no maneja Viciódromo mientras jugás, y elegís cómo se cuentan las horas.**

@@ -12,6 +12,7 @@ import { setup as setupEvents } from './events.js';
 import { loadActivity, setup as setupActivity } from './activity.js';
 import { setup as setupOnboarding } from './onboarding.js';
 import { setup as setupLists } from './lists.js';
+import { loadDisplays, setup as setupDisplays } from './displays.js';
 import { loadCaptureFolders, setupCaptureSettings } from './captures.js';
 import { request } from './api.js';
 import { readSnapshot, saveSnapshot } from './snapshot.js';
@@ -64,6 +65,7 @@ export function showPage(page, { focus = true } = {}) {
     loadCaptureFolders();
     loadIgdb();
     loadMame();
+    loadDisplays();
     loadSteamSettings();
     loadUpdates();
     loadPortable();
@@ -168,6 +170,7 @@ setupEvents();
 setupActivity();
 setupOnboarding();
 setupLists();
+setupDisplays();
 document
   .querySelectorAll('.nav-item[data-page]')
   .forEach((button) => (button.onclick = () => showPage(button.dataset.page)));

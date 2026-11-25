@@ -1,6 +1,7 @@
 // Configuración: tema, ventana, Arcade, IGDB, tarea nocturna y respaldo.
 import { plural, request } from './api.js';
 import { notify, notifyError, setFormError, showFormErrors } from './feedback.js';
+import { loadDisplays } from './displays.js';
 import { load } from './main.js';
 import { state } from './state.js';
 import { showCredentialFields } from './steam.js';
@@ -149,6 +150,7 @@ export async function loadSettings() {
   } catch {
     applyTheme('dark');
   }
+  loadDisplays();
 }
 
 export function describeIgdbStatus(settings, status) {

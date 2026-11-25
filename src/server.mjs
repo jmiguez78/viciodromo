@@ -11,7 +11,18 @@ import { createIgdb, imageUrl } from './igdb.mjs';
 import { createSteam, mergeSteamLibrary } from './steam.mjs';
 import { createSteamAssets } from './steam-assets.mjs';
 import { createArcade } from './mame.mjs';
-import { createSessionLog, createSessionTracker } from './sessions.mjs';
+import { createSessionLog, createSessionTracker, gameRoots } from './sessions.mjs';
+import {
+  chooseDisplay,
+  cleanDisplayAliases,
+  cleanDisplayRef,
+  createDisplayHelper,
+  describeChoice,
+  describeDisplays,
+  displayRef,
+  findDisplay,
+  sameDisplayRef
+} from './displays.mjs';
 import { createTaskHub } from './tasks.mjs';
 import { buildActivity } from './activity.mjs';
 import { copyToPortable, portableFolder } from './portable.mjs';
@@ -141,6 +152,8 @@ const arcade = createArcade(dataDir);
 // MAME alternativo: un MAME más viejo para los juegos que el principal no puede correr (ver arcadeGames).
 const legacyArcade = createArcade(dataDir, { slot: 'legacy' });
 const arcadeFor = (game) => (game?.arcade?.engine === 'legacy' ? legacyArcade : arcade);
+// Monitor de cada juego (ver displays.mjs): en Windows mueve la ventana del juego o le indica la pantalla a MAME.
+const displayHelper = createDisplayHelper({ log });
 // Juegos de Arcade de los dos MAME: del alternativo sólo los que el principal no tiene (ni como versión regional
 // ni con el mismo título), para que cada juego aparezca una vez y se abra con el MAME que lo corre.
 const normalizedTitle = (name) =>
@@ -526,6 +539,7 @@ const buildLibrary = memo((catalog, prefs, metadata, account, arcadeList) => {
         rating: 0,
         notes: '',
         lastLaunchedAt: null,
+        display: null,
         ...saved,
         launch: safeOverride(saved.launchOverride) ?? game.launch
       };
@@ -672,6 +686,12 @@ function gameUpdate(current, update) {
   if (Number.isInteger(update.rating) && update.rating >= 0 && update.rating <= 5) next.rating = update.rating;
   if (typeof update.notes === 'string') next.notes = update.notes.slice(0, 4000);
   if ('launchOverride' in update) next.launchOverride = safeOverride(update.launchOverride);
+  // Monitor predeterminado del juego; null vuelve al principal.
+  if ('display' in update) {
+    const display = cleanDisplayRef(update.display);
+    if (display) next.display = display;
+    else delete next.display;
+  }
   return next;
 }
 function importedGame(saved) {
@@ -714,7 +734,9 @@ export async function appSettings() {
     // «Primeros pasos» en Inicio: oculto si se descartó.
     onboardingDismissed: settings.onboardingDismissed === true,
     // Horas jugadas: 'all' suma lo que informan otras plataformas (Steam); 'viciodromo', sólo lo medido acá.
-    playtime: playtimeModes.includes(settings.playtime) ? settings.playtime : 'all'
+    playtime: playtimeModes.includes(settings.playtime) ? settings.playtime : 'all',
+    // Nombres propios de los monitores: [{ id, label, x, y, width, height, alias }] (ver displays.mjs).
+    displayAliases: cleanDisplayAliases(settings.displayAliases)
   };
 }
 // Sesiones medidas por el launcher: Arcade (abre y ve cerrarse a MAME) y, en Windows, cualquier juego con
@@ -796,9 +818,31 @@ export function createServer({
   onRestart,
   onLibraryChange,
   listProcesses,
+  // Monitores conectados, como los informa Electron (la aplicación de escritorio); sin ella, ninguno.
+  listDisplays = () => [],
+  // Muestra un número en cada pantalla (Configuración → Monitores → Identificar); sólo en la aplicación de escritorio.
+  identifyDisplays = null,
   autoUpdate = noAutoUpdate
 } = {}) {
   const router = createRouter();
+  async function connectedDisplays() {
+    try {
+      return describeDisplays(await listDisplays(), (await appSettings()).displayAliases);
+    } catch (error) {
+      log('warn', 'monitor', `No se pudo leer la lista de monitores: ${error.message}`);
+      return [];
+    }
+  }
+  // No se pudo llevar el juego al monitor: la interfaz lo avisa (evento «display»).
+  function displayFailed(game, display, reason) {
+    tasks.emit('display', { key: game.key, game: game.name, display: display.name, reason });
+  }
+  // Con un solo monitor no hay nada que elegir: el juego abre donde siempre.
+  async function displayFor(game, once) {
+    const list = await connectedDisplays();
+    if (!displayHelper.supported || list.length < 2) return null;
+    return chooseDisplay(game, list, once);
+  }
   // Al cerrarse un juego medido: se guarda la sesión y la ventana vuelve al frente.
   async function finishSession(game, session) {
     const entry = await recordSession(game, session).catch((error) => {
@@ -826,6 +870,81 @@ export function createServer({
     appSettings,
     themes,
     playtimeModes,
+    // Monitores conectados (con su alias y cuántos juegos abren ahí) y los conocidos que no están conectados: los que
+    // tienen alias o son el predeterminado de algún juego.
+    async displays() {
+      const [list, prefs, settings] = await Promise.all([connectedDisplays(), preferences(), appSettings()]);
+      const refs = Object.values(prefs.games ?? {})
+        .map((saved) => cleanDisplayRef(saved?.display))
+        .filter(Boolean);
+      const known = [];
+      const knownFor = (ref) => {
+        let item = known.find((entry) => sameDisplayRef(entry.ref, ref));
+        if (!item) known.push((item = { ref: cleanDisplayRef(ref), name: ref.label || 'Monitor', games: 0 }));
+        return item;
+      };
+      for (const entry of settings.displayAliases) if (!findDisplay(list, entry)) knownFor(entry).name = entry.alias;
+      for (const ref of refs) if (!findDisplay(list, ref)) knownFor(ref).games += 1;
+      return {
+        supported: displayHelper.supported && list.length > 1,
+        identify: Boolean(identifyDisplays) && list.length > 1,
+        displays: list.map((display) => ({
+          ...displayRef(display),
+          detected: display.detected,
+          alias: display.alias,
+          name: display.name,
+          number: display.number,
+          primary: display.primary,
+          games: refs.filter((ref) => findDisplay(list, ref) === display).length
+        })),
+        known: known.map(({ ref, name, games }) => ({ ...ref, name, games }))
+      };
+    },
+    // Alias de un monitor conectado; vacío lo quita.
+    async setDisplayAlias(ref, alias) {
+      const list = await connectedDisplays();
+      const display = findDisplay(list, ref);
+      if (!display) throw notFound('Ese monitor no está conectado.');
+      const name = typeof alias === 'string' ? alias.trim().slice(0, 40) : '';
+      await updatePreferences((prefs) => {
+        prefs.settings ??= {};
+        const others = cleanDisplayAliases(prefs.settings.displayAliases).filter(
+          (entry) => findDisplay(list, entry) !== display
+        );
+        prefs.settings.displayAliases = name ? [...others, { ...displayRef(display), alias: name }] : others;
+      });
+      return deps.displays();
+    },
+    // Olvidar un monitor que ya no está: sin alias, y sus juegos vuelven al principal.
+    async forgetDisplay(ref) {
+      const clean = cleanDisplayRef(ref);
+      if (!clean) throw badRequest('Falta el monitor.');
+      if (findDisplay(await connectedDisplays(), clean)) throw conflict('Ese monitor está conectado.');
+      let games = 0;
+      await updatePreferences((prefs) => {
+        prefs.settings ??= {};
+        prefs.settings.displayAliases = cleanDisplayAliases(prefs.settings.displayAliases).filter(
+          (entry) => !sameDisplayRef(entry, clean)
+        );
+        for (const [key, saved] of Object.entries(prefs.games ?? {})) {
+          if (!saved?.display || !sameDisplayRef(saved.display, clean)) continue;
+          const { display, ...rest } = saved;
+          prefs.games[key] = rest;
+          games += 1;
+        }
+      });
+      log('info', 'monitor', `Monitor olvidado (${clean.label || clean.id}): ${games} juegos vuelven al principal`);
+      onLibraryChange?.();
+      tasks.emit('library', { reason: 'display' });
+      return deps.displays();
+    },
+    async identifyDisplays() {
+      const list = await connectedDisplays();
+      if (!identifyDisplays || list.length < 2)
+        throw conflict('Hace falta la aplicación de escritorio y más de un monitor.');
+      await identifyDisplays(list.map(({ id, number, name, detected }) => ({ id, number, name, detected })));
+      return { ok: true };
+    },
     steam,
     igdb,
     arcade,
@@ -873,6 +992,11 @@ export function createServer({
           Boolean
         ),
         portable: portableInfo(),
+        // Con más de un monitor, Primeros pasos propone ponerles nombre.
+        displays: await connectedDisplays().then((list) => ({
+          count: displayHelper.supported ? list.length : 0,
+          named: list.filter((display) => display.alias).length
+        })),
         arcade: {
           configured: Boolean(arcadeSettings.exe || legacySettings.exe),
           games: catalog.games.filter((game) => game.platform === 'Arcade').length
@@ -921,19 +1045,44 @@ export function createServer({
         null
       );
     },
-    async play(game, key) {
+    // options.display: monitor elegido sólo para esta vez (Jugar ▾).
+    async play(game, key, options = {}) {
       let tracked = false;
+      const choice = await displayFor(game, options.display).catch(() => null);
       if (game.launch?.type === 'mame') {
         tracked = true;
-        await arcadeFor(game).launch(key.slice('arcade:'.length), async (seconds) => {
-          const start = new Date(Date.now() - seconds * 1000).toISOString();
-          await finishSession(game, { start, seconds, source: 'mame' });
-        });
+        // A MAME se le indica la pantalla al abrirlo; su pantalla completa no se deja mover después.
+        const screen = choice ? await displayHelper.mameArgs(choice.display) : [];
+        if (choice && !screen.length) {
+          log('warn', 'monitor', `${game.key}: no se encontró la pantalla de Windows de ${choice.display.name}`);
+          displayFailed(game, choice.display, 'no-screen');
+        }
+        await arcadeFor(game).launch(
+          key.slice('arcade:'.length),
+          async (seconds) => {
+            const start = new Date(Date.now() - seconds * 1000).toISOString();
+            await finishSession(game, { start, seconds, source: 'mame' });
+          },
+          screen
+        );
       } else {
         await launch(game);
         tracked = tracker.track(game);
+        if (choice) {
+          const roots = gameRoots(game);
+          const done = ({ ok, reason }) => ok || displayFailed(game, choice.display, reason);
+          if (roots.length) await displayHelper.place(roots, choice.display, game.key, done).catch(() => false);
+          else {
+            log('info', 'monitor', `${game.key}: sin carpeta de instalación conocida, no se puede mover de monitor`);
+            displayFailed(game, choice.display, 'no-folder');
+          }
+        }
       }
-      log('info', 'juego', `Iniciado ${game.key} (${game.launch?.type ?? 'sin tipo'})`);
+      log(
+        'info',
+        'juego',
+        `Iniciado ${game.key} (${game.launch?.type ?? 'sin tipo'})${choice ? ` en ${describeChoice(choice)}` : ''}`
+      );
       await updatePreferences((prefs) => {
         prefs.games[game.key] = { ...(prefs.games[game.key] ?? {}), lastLaunchedAt: new Date().toISOString() };
       });
@@ -941,7 +1090,8 @@ export function createServer({
       // La aplicación de escritorio se minimiza para dejar el juego adelante.
       const minimize = (await appSettings()).minimizeOnLaunch;
       if (minimize) setTimeout(() => onLaunch?.(game), 1200);
-      return { ok: true, minimize, tracked };
+      const display = choice ? { id: choice.display.id, name: choice.display.name, source: choice.source } : null;
+      return { ok: true, minimize, tracked, display };
     },
     async importPreferences(imported) {
       const games = Object.fromEntries(
@@ -1051,8 +1201,31 @@ function clientLog(entry) {
     entry.detail ? String(entry.detail).slice(0, 2000) : undefined
   );
 }
+// Las reglas «etiqueta → monitor» de una versión de prueba pasan a ser el monitor predeterminado de cada juego que
+// tenía esa etiqueta (si no tenía uno elegido) y se borran de los ajustes.
+export async function migrateDisplayRules() {
+  const rules = (await preferences()).settings?.displayRules;
+  if (!Array.isArray(rules)) return 0;
+  let moved = 0;
+  await updatePreferences((prefs) => {
+    for (const [key, saved] of Object.entries(prefs.games)) {
+      if (saved.display || !Array.isArray(saved.tags)) continue;
+      const tags = new Set(saved.tags.map((tag) => String(tag).toLowerCase()));
+      const rule = rules.find(
+        (item) => tags.has(String(item?.tag ?? '').toLowerCase()) && cleanDisplayRef(item.display)
+      );
+      if (!rule) continue;
+      prefs.games[key] = { ...saved, display: cleanDisplayRef(rule.display) };
+      moved += 1;
+    }
+    if (prefs.settings) delete prefs.settings.displayRules;
+  });
+  log('info', 'monitor', `Reglas por etiqueta convertidas: ${moved} juegos con monitor predeterminado`);
+  return moved;
+}
 export function startServer(port = Number(process.env.PORT || 4321), options = {}) {
   const server = createServer(options);
+  migrateDisplayRules().catch((error) => log('warn', 'monitor', error.message));
   const updateSteam = setTimeout(async () => {
     try {
       const settings = await steam.settings();

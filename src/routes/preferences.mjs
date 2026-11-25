@@ -38,6 +38,14 @@ export function preferencesRoutes(router, d) {
     return { coverFile: file };
   });
   router.get('/api/settings', () => d.appSettings());
+  // Monitores conectados, para elegir el de cada juego (sólo en la aplicación de escritorio de Windows).
+  router.get('/api/displays', () => d.displays());
+  router.put('/api/displays/alias', async ({ body }) => {
+    const update = await body();
+    return d.setDisplayAlias(update.display, update.alias);
+  });
+  router.post('/api/displays/forget', async ({ body }) => d.forgetDisplay((await body()).display));
+  router.post('/api/displays/identify', () => d.identifyDisplays());
   router.put('/api/settings', async ({ body }) => {
     const update = await body();
     const patch = {};

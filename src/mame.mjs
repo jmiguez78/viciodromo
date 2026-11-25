@@ -840,8 +840,9 @@ export function createArcade(dataDir, { fetchImpl = globalThis.fetch, spawnImpl 
         names.map((name) => `${THUMBNAILS}${folder}/${encodeURIComponent(thumbnailName(name))}.png`)
       );
     },
-    // Abre MAME con el set pedido desde su carpeta (así usa su mame.ini) y avisa al cerrarse.
-    async launch(id, onExit) {
+    // Abre MAME con el set pedido desde su carpeta (así usa su mame.ini) y avisa al cerrarse. `extra` suma
+    // argumentos de la línea de comandos (por ejemplo -screen para elegir el monitor).
+    async launch(id, onExit, extra = []) {
       const current = await loadCatalog();
       const { exe } = await settings();
       if (!exe || !current) throw conflict('Configurá MAME en Configuración.');
@@ -849,7 +850,7 @@ export function createArcade(dataDir, { fetchImpl = globalThis.fetch, spawnImpl 
       const known = current.games.some((game) => game.id === id || game.arcade.versions.some((item) => item.id === id));
       if (!known) throw notFound('Ese set no está en tu biblioteca de Arcade.');
       const started = Date.now();
-      const child = spawnImpl(exe, [id], { cwd: path.dirname(exe), stdio: 'ignore', windowsHide: false });
+      const child = spawnImpl(exe, [id, ...extra], { cwd: path.dirname(exe), stdio: 'ignore', windowsHide: false });
       child.once('exit', () => onExit?.(Math.round((Date.now() - started) / 1000)));
       await new Promise((resolve, reject) => {
         child.once('spawn', resolve);

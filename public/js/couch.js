@@ -5,6 +5,7 @@
 import { state } from './state.js';
 import { applyCover, coverInfo, paintBackdrop, pruneCoverLoads, showWordmark } from './art.js';
 import { posterAction } from './cards.js';
+import { defaultDisplay, displays } from './displays.js';
 import { playGame } from './launch.js';
 import { uniqueGames } from './library.js';
 
@@ -274,8 +275,16 @@ function openSheet(game) {
   sheet.querySelector('.couch-facts').textContent = facts(game);
   sheet.querySelector('.couch-summary').textContent =
     game.arcade?.wiki?.extract || game.meta?.summary || 'Sin descripción todavía.';
+  // Con más de un monitor, «Jugar en…» los otros monitores, sólo por esa vez.
+  const elsewhere =
+    displays.supported && game.installed !== false && game.launch?.available
+      ? displays.list
+          .filter((display) => display !== defaultDisplay(game))
+          .map((display) => ['Jugar en ' + display.name, 'play-on:' + display.id])
+      : [];
   const actions = [
     [game.installed === false ? 'Instalar' : 'Jugar', 'play', true],
+    ...elsewhere,
     [game.favorite ? 'Quitar de favoritos' : 'Agregar a favoritos', 'favorite'],
     ['Volver', 'back']
   ];
@@ -301,7 +310,10 @@ async function runSheetAction(action) {
     return;
   }
   closeLayer();
-  playGame(game);
+  const display = action.startsWith('play-on:')
+    ? displays.list.find((item) => item.id === action.slice('play-on:'.length))
+    : null;
+  playGame(game, undefined, display ? { display } : {});
 }
 function openMenu() {
   layer = 'menu';

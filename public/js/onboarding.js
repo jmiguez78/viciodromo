@@ -1,4 +1,5 @@
-// Primeros pasos (F1): una tarjeta en Inicio con tres pasos (tus juegos, conectar Steam e IGDB, sumar Arcade)
+// Primeros pasos (F1): una tarjeta en Inicio con tres pasos (tus juegos, conectar Steam e IGDB, sumar Arcade) y,
+// con más de un monitor, un cuarto (ponerles nombre)
 // hasta completarlos o descartarla. Se actualiza sola con los eventos del servidor.
 import { plural, request } from './api.js';
 import { notify, notifyError } from './feedback.js';
@@ -48,7 +49,24 @@ export function onboardingSteps(data) {
       : 'Opcional: si tenés MAME, indicá dónde está mame.exe y se suman los juegos que arrancan.',
     action: data.arcade.configured ? null : { label: 'Configurar Arcade', target: '#mame-form' }
   };
-  return [games, accounts, arcade];
+  // Sólo con más de un monitor: ponerles nombre para elegir en cuál se abre cada juego.
+  const count = data.displays?.count ?? 0;
+  const named = data.displays?.named ?? 0;
+  const monitors =
+    count > 1
+      ? {
+          id: 'displays',
+          title: 'Tus monitores',
+          done: named > 0,
+          text: named
+            ? 'Tus monitores tienen nombre. Con la flecha de Jugar elegís en cuál se abre cada juego.'
+            : 'Tenés ' +
+              count +
+              ' monitores: ponele nombre a cada uno («Escritorio», «Tele») para elegir en cuál se abre cada juego.',
+          action: named ? null : { label: 'Ponerles nombre', target: '#display-list' }
+        }
+      : null;
+  return [games, accounts, arcade, monitors].filter(Boolean);
 }
 
 // Claves guardadas en otra PC (portable) o con otro usuario de Windows: se avisa una vez por apertura.
@@ -84,7 +102,7 @@ export async function loadOnboarding() {
     card.hidden = data.dismissed || complete;
     if (card.hidden) return;
     const done = steps.filter((step) => step.done).length;
-    document.querySelector('#onboarding-summary').textContent = done + ' de 3 listos.';
+    document.querySelector('#onboarding-summary').textContent = done + ' de ' + steps.length + ' listos.';
     const list = document.querySelector('#onboarding-steps');
     list.replaceChildren(
       ...steps.map((step, index) => {

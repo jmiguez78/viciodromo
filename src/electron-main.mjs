@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, nativeTheme, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, screen, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -161,8 +161,66 @@ async function playFromJumpList(key) {
       });
   }
 }
+// Monitores conectados para elegir el de cada juego (ver displays.mjs). En Windows se suma el rectángulo en píxeles
+// físicos, el que usan las ventanas de los juegos y MAME (con escalas distintas por monitor no coincide con bounds).
+function listDisplays() {
+  const primary = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((display) => ({
+    id: display.id,
+    label: display.label,
+    primary: display.id === primary,
+    bounds: display.bounds,
+    physical: isWindows ? screen.dipToScreenRect(null, display.bounds) : null
+  }));
+}
+// «Identificar» (Configuración → Monitores): un número grande unos segundos en el centro de cada pantalla, como en
+// Configuración de pantalla de Windows. Ventanas sin marco, sin foco y que no reciben clics.
+const escapeText = (value) =>
+  String(value).replace(
+    /[&<>"']/g,
+    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]
+  );
+function identifyDisplays(items) {
+  const all = screen.getAllDisplays();
+  for (const item of items) {
+    const display = all.find((entry) => String(entry.id) === item.id);
+    if (!display) continue;
+    const width = 440;
+    const height = 300;
+    const area = display.workArea;
+    const note = item.name !== item.detected ? `<small>${escapeText(item.detected)}</small>` : '';
+    const html =
+      '<!DOCTYPE html><meta charset="utf-8"><style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}' +
+      'main{box-sizing:border-box;height:100%;display:grid;place-content:center;gap:6px;text-align:center;' +
+      'border-radius:28px;background:rgba(18,16,26,.92);color:#fff;font-family:"Segoe UI",sans-serif;border:3px solid #8b7cf6}' +
+      'b{font-size:150px;line-height:1;font-weight:800}span{font-size:26px;font-weight:600}small{font-size:16px;opacity:.7}</style>' +
+      `<main><b>${item.number}</b><span>${escapeText(item.name)}</span>${note}</main>`;
+    const overlay = new BrowserWindow({
+      x: Math.round(area.x + (area.width - width) / 2),
+      y: Math.round(area.y + (area.height - height) / 2),
+      width,
+      height,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      focusable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      show: false,
+      webPreferences: { sandbox: true, contextIsolation: true, javascript: false }
+    });
+    overlay.setIgnoreMouseEvents(true);
+    overlay.once('ready-to-show', () => overlay.showInactive());
+    overlay.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {});
+    setTimeout(() => overlay.isDestroyed() || overlay.destroy(), 3000);
+  }
+}
 const callbacks = {
   onLaunch: () => window?.minimize(),
+  listDisplays,
+  identifyDisplays,
   onLibraryChange: refreshJumpListSoon,
   // Después de copiar los datos junto al .exe: se vuelve a abrir el portable (no la copia temporal).
   onRestart: () => {

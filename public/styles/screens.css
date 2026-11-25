@@ -2319,3 +2319,134 @@ a.meta-source {
   font: inherit;
   resize: vertical;
 }
+
+/* Jugar ▾: elegir el monitor desde la página del juego. */
+.play-split {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.play-split .game-play {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.play-split .game-play .label {
+  display: grid;
+  line-height: 1.15;
+  text-align: left;
+}
+.play-target {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.play-more {
+  justify-content: center;
+  width: 48px;
+  height: 54px;
+  padding: 0;
+  border-left-color: var(--play-strong);
+  border-radius: 0 14px 14px 0;
+}
+.play-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+}
+.play-menu[hidden] {
+  display: none;
+}
+.play-menu-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.play-menu-item small {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+.play-menu-item .icon {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  width: 18px;
+  height: 18px;
+  visibility: hidden;
+}
+.play-menu-item[aria-checked='true'] .icon {
+  visibility: visible;
+}
+.play-menu-item:hover,
+.play-menu-item:focus-visible {
+  background: var(--surface-soft);
+}
+
+/* Configuración → Monitores: número, nombre propio y datos de cada monitor. */
+.display-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.display-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.display-number {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-weight: 800;
+}
+.display-fields {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.display-fields input {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+}
+.display-fields small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.display-item.offline .display-number {
+  color: var(--muted);
+}
+.play-menu-link {
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0 0 8px 8px;
+  color: var(--accent-text);
+}

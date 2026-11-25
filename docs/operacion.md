@@ -55,6 +55,14 @@ Las capturas (`.png`, `.jpg`, `.webp`) y los videos (`.mp4`, `.webm`) se leen en
 
 Los nombres se comparan sin tildes, marcas ni signos; si el nombre de la captura es el comienzo de un solo juego («Control» → «Control Ultimate Edition») también se asocia, pero no si hay varios posibles. Los juegos de Arcade no se asocian por nombre. Para las pruebas, `GML_STEAM_DIR`, `GML_VIDEOS_DIR` y `GML_CAPTURES_DIR` reemplazan las carpetas reales.
 
+## Monitor de cada juego
+
+Con más de un monitor, cada juego puede abrirse en uno elegido (`src/displays.mjs`). El orden es: el monitor elegido sólo para esta vez (**Jugar ▾**, que manda `{ display }` en el cuerpo de `POST /api/launch/:key`), el monitor predeterminado del juego (`display` en sus preferencias) y, si no hay ninguno, nada: Windows lo abre donde siempre. Se guardan el identificador del monitor que da Electron, su nombre de fábrica y su resolución y posición en píxeles físicos: se lo busca por identificador; si cambió, por nombre, y entre dos monitores con el mismo nombre, por resolución y posición. Los nombres propios (**Configuración → Monitores**) van en `settings.displayAliases` con la misma referencia; **Olvidar** borra el nombre de un monitor desconectado y devuelve sus juegos al principal (`POST /api/displays/forget`), e **Identificar** (`POST /api/displays/identify`) abre por tres segundos una ventana sin marco con el número en cada pantalla. Un monitor elegido que no está conectado se ignora. Las reglas por etiqueta de la versión de prueba se convierten, al abrir, en el monitor predeterminado de los juegos que tenían esa etiqueta.
+
+- **Arcade:** antes de abrir MAME se busca el dispositivo de Windows del monitor (`\\.\DISPLAYn`, por el centro de su rectángulo en píxeles físicos) y se lo pasa con `-screen`, que tiene prioridad sobre `mame.ini`.
+- **Resto:** después de lanzar el juego, un ayudante de PowerShell espera hasta 4 minutos (lo que tarda un lanzador como Epic o EA) una ventana visible de un proceso que corra desde la carpeta del juego, la lleva al monitor y sigue mirando 30 segundos más, por si el juego cambia de ventana al terminar de cargar (cada ventana se reubica a lo sumo tres veces). Juegos sin carpeta de instalación conocida no se pueden mover.
+- El resultado queda en el registro (`monitor`): `pantalla-completa`, `maximizada`, `ventana`, `ya-estaba`, `bloqueada`, «no apareció la ventana» o `no-se-movio`. Si no se pudo, el servidor emite el evento `display` (motivo `no-window`, `not-moved`, `no-folder`, `no-screen` o `error`) y la interfaz lo avisa.
+
 ## Dónde se guardan los datos
 
 - **Desarrollo** (`npm start`, `npm run desktop`): en `data/` dentro del proyecto (excluida del repositorio).

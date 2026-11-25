@@ -4,7 +4,6 @@ import {
   HELPER_SCRIPT,
   chooseDisplay,
   cleanDisplayRef,
-  cleanDisplayRules,
   createDisplayHelper,
   describeChoice,
   describeDisplays,
@@ -66,31 +65,18 @@ test('cleanDisplayRef y findDisplay reconocen el monitor por identificador o por
   assert.equal(findDisplay(displays, { id: '999', label: 'Desconectado' }), null);
 });
 
-test('cleanDisplayRules descarta reglas incompletas y etiquetas repetidas', () => {
-  assert.deepEqual(cleanDisplayRules('nada'), []);
-  assert.deepEqual(
-    cleanDisplayRules([
-      { tag: ' Sim Racing ', display: { id: '2779098405', label: 'LG TV SSCR2' } },
-      { tag: 'sim racing', display: { id: '2528732444', label: 'Odyssey G5' } },
-      { tag: '', display: { id: '1' } },
-      { tag: 'Arcade' }
-    ]),
-    [{ tag: 'Sim Racing', display: { id: '2779098405', label: 'LG TV SSCR2' } }]
-  );
-});
-
-test('chooseDisplay: la ficha manda, después la regla por etiqueta y si no, Windows', () => {
-  const rules = [{ tag: 'Sim Racing', display: { id: '2779098405', label: 'LG TV SSCR2' } }];
-  const racing = { key: 'steam:244210', tags: ['sim racing'] };
-  assert.deepEqual(chooseDisplay(racing, rules, displays), { display: lg, source: 'tag', tag: 'Sim Racing' });
-  assert.equal(describeChoice(chooseDisplay(racing, rules, displays)), 'LG TV SSCR2 (etiqueta «Sim Racing»)');
-  const own = { ...racing, display: { id: '2528732444', label: 'Odyssey G5' } };
-  assert.deepEqual(chooseDisplay(own, rules, displays), { display: samsung, source: 'game' });
-  // El monitor de la ficha no está conectado: se usa la regla.
-  const missing = { ...racing, display: { id: '1', label: 'Proyector' } };
-  assert.equal(chooseDisplay(missing, rules, displays).source, 'tag');
-  assert.equal(chooseDisplay({ key: 'arcade:sf2', tags: [] }, rules, displays), null);
-  assert.equal(chooseDisplay(racing, rules, []), null);
+test('chooseDisplay: el elegido para esta vez, después el predeterminado del juego y si no, Windows', () => {
+  const racing = { key: 'steam:244210', display: { id: '2779098405', label: 'LG TV SSCR2' } };
+  assert.deepEqual(chooseDisplay(racing, displays), { display: lg, source: 'game' });
+  assert.equal(describeChoice(chooseDisplay(racing, displays)), 'LG TV SSCR2');
+  const once = chooseDisplay(racing, displays, { id: '2528732444', label: 'Odyssey G5' });
+  assert.deepEqual(once, { display: samsung, source: 'once' });
+  assert.equal(describeChoice(once), 'Odyssey G5 (sólo esta vez)');
+  // El elegido no está conectado: se usa el predeterminado; el predeterminado tampoco: Windows decide.
+  assert.equal(chooseDisplay(racing, displays, { id: '1', label: 'Proyector' }).source, 'game');
+  assert.equal(chooseDisplay({ key: 'x', display: { id: '1', label: 'Proyector' } }, displays), null);
+  assert.equal(chooseDisplay({ key: 'arcade:sf2' }, displays), null);
+  assert.equal(chooseDisplay(racing, []), null);
   assert.equal(describeChoice(null), 'monitor principal');
 });
 

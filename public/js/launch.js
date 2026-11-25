@@ -2,7 +2,9 @@
 import { request } from './api.js';
 import { artColors, paintBackdrop, showWordmark } from './art.js';
 import { posterCache } from './cards.js';
-import { notifyError } from './feedback.js';
+import { defaultDisplay, displayRefOf } from './displays.js';
+import { updatePreference } from './editor.js';
+import { notify, notifyError } from './feedback.js';
 import { renderHome } from './home.js';
 import { renderLibrary } from './library.js';
 import { load } from './main.js';
@@ -49,13 +51,48 @@ export function showLaunchOverlay(game) {
   requestAnimationFrame(() => launchOverlay.classList.add('show'));
 }
 
+// Jugar en otro monitor sólo esta vez (Jugar ▾): al volver a Viciódromo se ofrece dejarlo como predeterminado.
+let rememberOffer = null;
+function offerRemember() {
+  if (!rememberOffer) return;
+  const { game, display } = rememberOffer;
+  rememberOffer = null;
+  notify('Jugaste ' + game.name + ' en ' + display.name + '.', {
+    type: 'info',
+    action: {
+      label: 'Usar siempre ese monitor',
+      run: async () => {
+        try {
+          await updatePreference(game, { display: display.primary ? null : displayRefOf(display) });
+          notify(game.name + ' se va a abrir en ' + display.name + '.', { type: 'success' });
+        } catch (error) {
+          notifyError(error);
+        }
+      }
+    }
+  });
+}
+
 // version: en Arcade, el set de una versión regional; el tiempo jugado se suma al juego.
-export async function playGame(game, version) {
+// options.display: monitor elegido sólo para esta vez.
+export async function playGame(game, version, options = {}) {
   if (game.installed === false) return installSteamGame(game);
   showLaunchOverlay(game);
   try {
     const key = version ? 'arcade:' + version : game.key;
-    const result = await request('/api/launch/' + encodeURIComponent(key), { method: 'POST' });
+    const once = options.display ?? null;
+    const result = await request(
+      '/api/launch/' + encodeURIComponent(key),
+      once
+        ? {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ display: displayRefOf(once) })
+          }
+        : { method: 'POST' }
+    );
+    rememberOffer = once && once !== defaultDisplay(game) ? { game, display: once } : null;
+    if (!result.minimize) offerRemember();
     game.lastLaunchedAt = new Date().toISOString();
     launchOverlay.classList.add('done');
     document.querySelector('#launch-message').textContent = result.display
@@ -79,6 +116,7 @@ export function setup() {
   // Al volver a la aplicación (por ejemplo, después de jugar), la pantalla ya no hace falta.
   window.addEventListener('focus', () => {
     if (launchOverlay.classList.contains('done')) hideLaunchOverlay();
+    offerRemember();
   });
   // Al cerrar MAME, la aplicación de escritorio vuelve al frente y avisa: se actualiza el tiempo jugado.
   window.addEventListener('gml-game-exit', () => {

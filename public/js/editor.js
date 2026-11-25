@@ -1,7 +1,7 @@
 // Editar un juego: preferencias, lanzamiento personalizado y portada propia.
 import { request, tagsOf } from './api.js';
 import { posterCache } from './cards.js';
-import { automaticHint, displayFromValue, displayOptions, displays, loadDisplays } from './displays.js';
+import { displayFromValue, displayOptions, displays, loadDisplays } from './displays.js';
 import { clearFieldError, notify, setFormError, showFormErrors, undoPreference } from './feedback.js';
 import { gamePage, renderGameAside } from './game-page.js';
 import { renderHome } from './home.js';
@@ -47,13 +47,12 @@ export function editGame(game) {
   });
 }
 
-// Monitor del juego: sólo con más de un monitor (o si ya tenía uno elegido).
+// Monitor predeterminado del juego: sólo con más de un monitor (o si ya tenía uno elegido).
 function fillDisplayField(game, value) {
   const select = document.querySelector('#display-input');
   document.querySelector('#display-fieldset').hidden = !displays.supported && !game.display;
-  select.innerHTML = displayOptions(game.display, { automatic: 'Automático' });
+  select.innerHTML = displayOptions(game.display);
   if (value !== undefined && [...select.options].some((option) => option.value === value)) select.value = value;
-  document.querySelector('#display-help').textContent = automaticHint(game);
 }
 
 export const launchPlaceholders = {

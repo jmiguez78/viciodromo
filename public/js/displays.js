@@ -1,13 +1,16 @@
-// Monitor de cada juego: los monitores conectados, las reglas por etiqueta (Configuración) y el selector de la
-// ficha. Sólo en la aplicación de escritorio de Windows con más de un monitor (ver src/displays.mjs).
-import { escapeHtml, request, tagsOf } from './api.js';
-import { notify, notifyError } from './feedback.js';
-import { hydrateIcons } from './icons.js';
+// Monitor de cada juego: los monitores conectados, el botón Jugar ▾ de la página del juego (jugar en otro monitor
+// sólo esta vez) y el selector de Editar (monitor predeterminado). Sólo en la aplicación de escritorio de Windows con
+// más de un monitor (ver src/displays.mjs).
+import { escapeHtml, request } from './api.js';
+import { icon } from './icons.js';
+import { playGame } from './launch.js';
 import { state } from './state.js';
 
-export const displays = { supported: false, list: [], rules: [] };
+export const displays = { supported: false, list: [] };
 
+// Avisa con «gml-displays» para que la página del juego muestre (o saque) el menú de monitores.
 export async function loadDisplays() {
+  const before = JSON.stringify(displays);
   try {
     const data = await request('/api/displays');
     displays.supported = data.supported === true;
@@ -16,13 +19,8 @@ export async function loadDisplays() {
     displays.supported = false;
     displays.list = [];
   }
-  renderDisplayRules();
+  if (JSON.stringify(displays) !== before) window.dispatchEvent(new Event('gml-displays'));
   return displays;
-}
-
-export function setDisplayRules(rules) {
-  displays.rules = Array.isArray(rules) ? rules : [];
-  renderDisplayRules();
 }
 
 export const displayRefOf = (display) => ({ id: display.id, label: display.label || display.name });
@@ -37,6 +35,13 @@ export function findDisplay(ref) {
   );
 }
 
+const primaryDisplay = () => displays.list.find((item) => item.primary) ?? null;
+
+// El monitor donde abre Jugar: el predeterminado del juego si está conectado; si no, el principal.
+export function defaultDisplay(game) {
+  return findDisplay(game.display) ?? primaryDisplay();
+}
+
 export function displayLabel(display) {
   return (
     display.name +
@@ -45,21 +50,25 @@ export function displayLabel(display) {
   );
 }
 
-// Opciones de un <select>: los monitores conectados y, si el guardado no está conectado, ese con su nombre
-// (valor «saved»), así guardar la ficha no lo borra.
-export function displayOptions(selected, { automatic } = {}) {
+// Opciones del selector de Editar: el principal (sin elección guardada) y los demás monitores conectados; si el
+// guardado no está conectado, ese con su nombre (valor «saved»), así guardar la ficha no lo borra.
+export function displayOptions(selected) {
   const current = findDisplay(selected);
-  const options = automatic ? ['<option value="">' + escapeHtml(automatic) + '</option>'] : [];
+  const primary = primaryDisplay();
+  const options = [
+    '<option value="">' + escapeHtml(primary ? displayLabel(primary) : 'Monitor principal') + '</option>'
+  ];
   for (const display of displays.list)
-    options.push(
-      '<option value="' +
-        escapeHtml(display.id) +
-        '"' +
-        (current === display ? ' selected' : '') +
-        '>' +
-        escapeHtml(displayLabel(display)) +
-        '</option>'
-    );
+    if (!display.primary || current === display)
+      options.push(
+        '<option value="' +
+          escapeHtml(display.id) +
+          '"' +
+          (current === display ? ' selected' : '') +
+          '>' +
+          escapeHtml(displayLabel(display)) +
+          '</option>'
+      );
   if (selected && !current)
     options.push(
       '<option value="saved" selected>' +
@@ -69,157 +78,131 @@ export function displayOptions(selected, { automatic } = {}) {
   return options.join('');
 }
 
-// El valor de un <select> de monitores, como se guarda; `saved` es lo que había.
+// El valor del selector, como se guarda; `saved` es lo que había. El principal se guarda como «sin elección».
 export function displayFromValue(value, saved = null) {
   if (value === 'saved') return saved;
   const display = displays.list.find((item) => item.id === value);
-  return display ? displayRefOf(display) : null;
+  return display && !display.primary ? displayRefOf(display) : null;
 }
 
-// La primera regla por etiqueta que le corresponde al juego.
-export function ruleFor(game, rules = displays.rules) {
-  const tags = new Set(tagsOf(game).map((tag) => tag.toLowerCase()));
-  return rules.find((rule) => tags.has(String(rule.tag).toLowerCase())) || null;
-}
-
-// Qué hace «Automático» con este juego, para la ayuda de la ficha.
-export function automaticHint(game) {
-  const rule = ruleFor(game);
-  if (!rule) return 'Automático: se abre en el monitor principal, como siempre.';
-  const target = findDisplay(rule.display);
+// ── Jugar ▾ ─────────────────────────────────────────────────────
+// Con más de un monitor, el botón Jugar de la página del juego suma una flecha con los monitores.
+export function playSplitHtml(game, playHtml) {
+  if (!displays.supported || game.installed === false || !game.launch?.available) return playHtml;
   return (
-    'Automático: por la etiqueta «' +
-    rule.tag +
-    '» va a ' +
-    (target
-      ? target.name
-      : (rule.display.label || 'otro monitor') + ', que no está conectado (se abre en el principal)') +
-    '.'
+    '<div class="play-split">' +
+    playHtml +
+    '<button type="button" class="button play play-more" data-play-menu aria-haspopup="menu" aria-expanded="false"' +
+    ' aria-label="Jugar en otro monitor" title="Jugar en otro monitor">' +
+    icon('chevronDown') +
+    '</button><div class="play-menu" role="menu" aria-label="Jugar en" hidden></div></div>'
   );
 }
 
-function knownTags() {
-  const tags = new Map();
-  for (const game of state.games)
-    for (const tag of tagsOf(game)) if (!tags.has(tag.toLowerCase())) tags.set(tag.toLowerCase(), tag);
-  return [...tags.values()].sort((a, b) => a.localeCompare(b, 'es'));
+// Debajo de «Jugar», el monitor donde abre si no es el principal.
+export function decoratePlay(root, game) {
+  const button = root.querySelector('.play-split [data-action=play]');
+  if (!button) return;
+  const target = findDisplay(game.display);
+  if (!target || target.primary) return;
+  const small = document.createElement('small');
+  small.className = 'play-target';
+  small.textContent = target.name;
+  button.querySelector('.label')?.append(small);
+  button.setAttribute('aria-label', 'Jugar a ' + game.name + ' en ' + target.name);
 }
 
-export function renderDisplayRules() {
-  const row = document.querySelector('#displays-row');
-  if (!row) return;
-  row.hidden = !displays.supported && !displays.rules.length;
-  const list = document.querySelector('#display-rules');
-  document.querySelector('#display-rules-empty').hidden = displays.rules.length > 0;
-  list.innerHTML = displays.rules
+function fillMenu(menu, game) {
+  const current = defaultDisplay(game);
+  menu.innerHTML = displays.list
     .map(
-      (rule, index) =>
-        '<li class="display-rule" data-index="' +
-        index +
-        '"><input type="text" list="display-tag-options" maxlength="60" data-rule-tag value="' +
-        escapeHtml(rule.tag) +
-        '" aria-label="Etiqueta de la regla ' +
-        (index + 1) +
-        '" /><span class="display-rule-arrow" aria-hidden="true">→</span><select data-rule-display aria-label="Monitor de la regla ' +
-        (index + 1) +
-        '">' +
-        displayOptions(rule.display) +
-        '</select><button type="button" class="icon-btn" data-rule-remove aria-label="Quitar la regla «' +
-        escapeHtml(rule.tag) +
-        '»"><span data-icon="x"></span></button></li>'
+      (display) =>
+        '<button type="button" role="menuitemradio" class="play-menu-item" data-display="' +
+        escapeHtml(display.id) +
+        '" aria-checked="' +
+        String(display === current) +
+        '" tabindex="-1"><span>' +
+        escapeHtml(display.name) +
+        '</span><small>' +
+        escapeHtml(
+          [display.primary ? 'principal' : '', display === current ? 'predeterminado' : ''].filter(Boolean).join(' · ')
+        ) +
+        '</small>' +
+        icon('check') +
+        '</button>'
     )
     .join('');
-  hydrateIcons(list);
-  const select = document.querySelector('#display-rule-display');
-  const chosen = select.value;
-  select.innerHTML = displayOptions(null);
-  // Por defecto, el primer monitor que no es el principal (el caso típico: la tele).
-  const fallback = displays.list.find((item) => !item.primary) ?? displays.list[0];
-  select.value = displays.list.some((item) => item.id === chosen) ? chosen : (fallback?.id ?? '');
-  document.querySelector('#display-rule-form button[type="submit"]').disabled = !displays.list.length;
 }
 
-async function saveRules(rules, message) {
-  try {
-    const settings = await request('/api/settings', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ displayRules: rules })
-    });
-    setDisplayRules(settings.displayRules);
-    notify(message, { type: 'success' });
-    return true;
-  } catch (error) {
-    renderDisplayRules();
-    notifyError(error);
-    return false;
-  }
+let openMenu = null;
+
+function closeMenu({ focus = false } = {}) {
+  if (!openMenu) return;
+  const { menu, toggle } = openMenu;
+  openMenu = null;
+  menu.hidden = true;
+  toggle.setAttribute('aria-expanded', 'false');
+  if (focus) toggle.focus();
 }
 
-const sameTag = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+function showMenu(toggle) {
+  const split = toggle.closest('.play-split');
+  const key = toggle.closest('[data-key]')?.dataset.key;
+  const game = state.games.find((item) => item.key === key);
+  if (!split || !game) return;
+  const menu = split.querySelector('.play-menu');
+  fillMenu(menu, game);
+  menu.hidden = false;
+  toggle.setAttribute('aria-expanded', 'true');
+  openMenu = { menu, toggle, game };
+  (menu.querySelector('[aria-checked=true]') ?? menu.querySelector('[role=menuitemradio]'))?.focus();
+}
 
-// Enlaces de eventos; se llama una vez desde main.js.
 export function setup() {
-  const row = document.querySelector('#displays-row');
-  if (!row) return;
-  // Las etiquetas sugeridas salen de la biblioteca, que puede cargarse después que Configuración.
-  row.addEventListener('focusin', () => {
-    document.querySelector('#display-tag-options').innerHTML = knownTags()
-      .map((tag) => '<option value="' + escapeHtml(tag) + '"></option>')
-      .join('');
-  });
-  const list = document.querySelector('#display-rules');
-  list.addEventListener('change', (event) => {
-    const item = event.target.closest('.display-rule');
-    if (!item) return;
-    const index = Number(item.dataset.index);
-    const rules = displays.rules.map((rule) => ({ ...rule }));
-    const rule = rules[index];
-    if (!rule) return;
-    if (event.target.matches('[data-rule-tag]')) {
-      const tag = event.target.value.trim();
-      if (!tag || rules.some((other, position) => position !== index && sameTag(other.tag, tag))) {
-        notify(tag ? 'Ya hay una regla para «' + tag + '».' : 'La regla necesita una etiqueta.', { type: 'error' });
-        renderDisplayRules();
-        return;
+  document.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-play-menu]');
+    if (toggle) {
+      event.stopPropagation();
+      if (openMenu?.toggle === toggle) closeMenu();
+      else {
+        closeMenu();
+        showMenu(toggle);
       }
-      rule.tag = tag;
-    } else if (event.target.matches('[data-rule-display]')) {
-      rule.display = displayFromValue(event.target.value, rule.display) ?? rule.display;
-    } else return;
-    saveRules(rules, 'Regla de «' + rule.tag + '» actualizada.');
-  });
-  list.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-rule-remove]');
-    if (!button) return;
-    const index = Number(button.closest('.display-rule').dataset.index);
-    const removed = displays.rules[index];
-    if (!removed) return;
-    saveRules(
-      displays.rules.filter((_, position) => position !== index),
-      'Se quitó la regla de «' + removed.tag + '».'
-    );
-  });
-  document.querySelector('#display-rule-form').onsubmit = async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const input = document.querySelector('#display-rule-tag');
-    const error = form.querySelector('.form-error');
-    const tag = input.value.trim();
-    const display = displayFromValue(document.querySelector('#display-rule-display').value);
-    error.textContent = '';
-    if (!tag) error.textContent = 'Escribí la etiqueta, por ejemplo Sim Racing.';
-    else if (displays.rules.some((rule) => sameTag(rule.tag, tag)))
-      error.textContent = 'Ya hay una regla para «' + tag + '». Cambiale el monitor en la lista.';
-    else if (!display) error.textContent = 'Elegí un monitor.';
-    if (error.textContent) {
-      input.focus();
       return;
     }
-    const saved = await saveRules(
-      [...displays.rules, { tag, display }],
-      'Los juegos con la etiqueta «' + tag + '» se van a abrir en ' + findDisplay(display).name + '.'
-    );
-    if (saved) input.value = '';
-  };
+    const item = event.target.closest('.play-menu-item');
+    if (item && openMenu) {
+      const { game } = openMenu;
+      const display = displays.list.find((entry) => entry.id === item.dataset.display);
+      closeMenu();
+      if (display) playGame(game, undefined, { display });
+      return;
+    }
+    if (openMenu && !event.target.closest('.play-menu')) closeMenu();
+  });
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (!openMenu) return;
+      const items = [...openMenu.menu.querySelectorAll('[role=menuitemradio]')];
+      const index = items.indexOf(document.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeMenu({ focus: true });
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        items[(index + step + items.length) % items.length]?.focus();
+      } else if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
+      } else if (event.key === 'Tab') closeMenu();
+    },
+    true
+  );
+  // Al volver a la ventana, un monitor pudo conectarse o desconectarse.
+  window.addEventListener('focus', () => {
+    if (state.page === 'game') loadDisplays();
+  });
 }

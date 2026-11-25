@@ -291,36 +291,6 @@
                   >
                 </div>
               </section>
-              <section class="settings-row" id="displays-row" hidden>
-                <div class="settings-copy">
-                  <h3>Monitor de cada juego</h3>
-                  <p>
-                    Los juegos con una etiqueta se abren en el monitor que elijas (por ejemplo, «Sim Racing» en la tele
-                    del volante). En la ficha de cada juego también podés elegir su monitor, y eso tiene prioridad. Sin
-                    regla ni elección, el juego se abre en el monitor principal.
-                  </p>
-                </div>
-                <div class="settings-control">
-                  <ul id="display-rules" class="display-rules" aria-label="Reglas por etiqueta"></ul>
-                  <p id="display-rules-empty" class="helper-text">Todavía no hay reglas.</p>
-                  <form id="display-rule-form" class="display-rule-form" novalidate>
-                    <div class="display-rule">
-                      <input
-                        id="display-rule-tag"
-                        type="text"
-                        list="display-tag-options"
-                        maxlength="60"
-                        placeholder="Etiqueta, por ejemplo Sim Racing"
-                        aria-label="Etiqueta de la nueva regla"
-                      /><span class="display-rule-arrow" aria-hidden="true">→</span
-                      ><select id="display-rule-display" aria-label="Monitor de la nueva regla"></select
-                      ><button class="button" type="submit">Agregar</button>
-                    </div>
-                    <p class="form-error" role="alert"></p>
-                  </form>
-                  <datalist id="display-tag-options"></datalist>
-                </div>
-              </section>
               <section class="settings-row">
                 <div class="settings-copy">
                   <h3>Horas jugadas</h3>
@@ -657,7 +627,9 @@
         </fieldset>
         <fieldset id="display-fieldset" hidden>
           <legend>Monitor</legend>
-          <p id="display-help" class="helper-text"></p>
+          <p id="display-help" class="helper-text">
+            Dónde abre Jugar. Con la flecha de Jugar podés elegir otro monitor sólo por esa vez.
+          </p>
           <label for="display-input" class="visually-hidden">Monitor donde se abre el juego</label>
           <select id="display-input" aria-describedby="display-help"></select>
         </fieldset>

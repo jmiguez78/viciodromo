@@ -17,10 +17,12 @@ export function libraryRoutes(router, d) {
     return d.activity(Number.isFinite(now) && now > 0 ? now : Date.now());
   });
   router.post('/api/scan', () => d.scan());
-  router.post('/api/launch/:key', async ({ params }) => {
+  // Cuerpo opcional: { display } para jugar en otro monitor sólo esta vez.
+  router.post('/api/launch/:key', async ({ params, body }) => {
     const game = await d.findGame(params.key);
     if (!game) throw notFound('Juego no encontrado.');
-    return d.play(game, params.key);
+    const { display } = await body();
+    return d.play(game, params.key, { display: display ?? null });
   });
   router.post('/api/install/:key', async ({ params }) => {
     const game = (await d.library()).games.find((item) => item.key === params.key);

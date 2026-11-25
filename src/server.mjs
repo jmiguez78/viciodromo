@@ -12,14 +12,7 @@ import { createSteam, mergeSteamLibrary } from './steam.mjs';
 import { createSteamAssets } from './steam-assets.mjs';
 import { createArcade } from './mame.mjs';
 import { createSessionLog, createSessionTracker, gameRoots } from './sessions.mjs';
-import {
-  chooseDisplay,
-  cleanDisplayRef,
-  cleanDisplayRules,
-  createDisplayHelper,
-  describeChoice,
-  describeDisplays
-} from './displays.mjs';
+import { chooseDisplay, cleanDisplayRef, createDisplayHelper, describeChoice, describeDisplays } from './displays.mjs';
 import { createTaskHub } from './tasks.mjs';
 import { buildActivity } from './activity.mjs';
 import { copyToPortable, portableFolder } from './portable.mjs';
@@ -683,7 +676,7 @@ function gameUpdate(current, update) {
   if (Number.isInteger(update.rating) && update.rating >= 0 && update.rating <= 5) next.rating = update.rating;
   if (typeof update.notes === 'string') next.notes = update.notes.slice(0, 4000);
   if ('launchOverride' in update) next.launchOverride = safeOverride(update.launchOverride);
-  // Monitor elegido en la ficha; null vuelve a lo automático (regla por etiqueta o monitor principal).
+  // Monitor predeterminado del juego; null vuelve al principal.
   if ('display' in update) {
     const display = cleanDisplayRef(update.display);
     if (display) next.display = display;
@@ -731,9 +724,7 @@ export async function appSettings() {
     // «Primeros pasos» en Inicio: oculto si se descartó.
     onboardingDismissed: settings.onboardingDismissed === true,
     // Horas jugadas: 'all' suma lo que informan otras plataformas (Steam); 'viciodromo', sólo lo medido acá.
-    playtime: playtimeModes.includes(settings.playtime) ? settings.playtime : 'all',
-    // Monitor por etiqueta: [{ tag, display }] (ver displays.mjs).
-    displayRules: cleanDisplayRules(settings.displayRules)
+    playtime: playtimeModes.includes(settings.playtime) ? settings.playtime : 'all'
   };
 }
 // Sesiones medidas por el launcher: Arcade (abre y ve cerrarse a MAME) y, en Windows, cualquier juego con
@@ -829,10 +820,10 @@ export function createServer({
     }
   }
   // Con un solo monitor no hay nada que elegir: el juego abre donde siempre.
-  async function displayFor(game) {
+  async function displayFor(game, once) {
     const list = await connectedDisplays();
     if (!displayHelper.supported || list.length < 2) return null;
-    return chooseDisplay(game, (await appSettings()).displayRules, list);
+    return chooseDisplay(game, list, once);
   }
   // Al cerrarse un juego medido: se guarda la sesión y la ventana vuelve al frente.
   async function finishSession(game, session) {
@@ -861,7 +852,6 @@ export function createServer({
     appSettings,
     themes,
     playtimeModes,
-    cleanDisplayRules,
     async displays() {
       const list = await connectedDisplays();
       return {
@@ -971,9 +961,10 @@ export function createServer({
         null
       );
     },
-    async play(game, key) {
+    // options.display: monitor elegido sólo para esta vez (Jugar ▾).
+    async play(game, key, options = {}) {
       let tracked = false;
-      const choice = await displayFor(game).catch(() => null);
+      const choice = await displayFor(game, options.display).catch(() => null);
       if (game.launch?.type === 'mame') {
         tracked = true;
         // A MAME se le indica la pantalla al abrirlo; su pantalla completa no se deja mover después.
@@ -1009,7 +1000,7 @@ export function createServer({
       // La aplicación de escritorio se minimiza para dejar el juego adelante.
       const minimize = (await appSettings()).minimizeOnLaunch;
       if (minimize) setTimeout(() => onLaunch?.(game), 1200);
-      const display = choice ? { name: choice.display.name, source: choice.source, tag: choice.tag ?? null } : null;
+      const display = choice ? { id: choice.display.id, name: choice.display.name, source: choice.source } : null;
       return { ok: true, minimize, tracked, display };
     },
     async importPreferences(imported) {
@@ -1120,8 +1111,31 @@ function clientLog(entry) {
     entry.detail ? String(entry.detail).slice(0, 2000) : undefined
   );
 }
+// Las reglas «etiqueta → monitor» de una versión de prueba pasan a ser el monitor predeterminado de cada juego que
+// tenía esa etiqueta (si no tenía uno elegido) y se borran de los ajustes.
+export async function migrateDisplayRules() {
+  const rules = (await preferences()).settings?.displayRules;
+  if (!Array.isArray(rules)) return 0;
+  let moved = 0;
+  await updatePreferences((prefs) => {
+    for (const [key, saved] of Object.entries(prefs.games)) {
+      if (saved.display || !Array.isArray(saved.tags)) continue;
+      const tags = new Set(saved.tags.map((tag) => String(tag).toLowerCase()));
+      const rule = rules.find(
+        (item) => tags.has(String(item?.tag ?? '').toLowerCase()) && cleanDisplayRef(item.display)
+      );
+      if (!rule) continue;
+      prefs.games[key] = { ...saved, display: cleanDisplayRef(rule.display) };
+      moved += 1;
+    }
+    if (prefs.settings) delete prefs.settings.displayRules;
+  });
+  log('info', 'monitor', `Reglas por etiqueta convertidas: ${moved} juegos con monitor predeterminado`);
+  return moved;
+}
 export function startServer(port = Number(process.env.PORT || 4321), options = {}) {
   const server = createServer(options);
+  migrateDisplayRules().catch((error) => log('warn', 'monitor', error.message));
   const updateSteam = setTimeout(async () => {
     try {
       const settings = await steam.settings();

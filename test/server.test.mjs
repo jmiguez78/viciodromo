@@ -10,7 +10,7 @@ process.env.GML_DATA_DIR = dataDir;
 process.env.GML_STEAM_DIR = path.join(dataDir, 'Steam');
 process.env.GML_VIDEOS_DIR = path.join(dataDir, 'Videos');
 process.env.GML_CAPTURES_DIR = path.join(dataDir, 'Videos', 'Captures');
-const { createServer } = await import('../src/server.mjs');
+const { createServer, migrateDisplayRules } = await import('../src/server.mjs');
 
 const catalog = {
   schema: 2,
@@ -258,8 +258,7 @@ test('guarda el tema y lo conserva al restaurar un respaldo', async () => {
     theme: 'dark',
     minimizeOnLaunch: true,
     onboardingDismissed: false,
-    playtime: 'all',
-    displayRules: []
+    playtime: 'all'
   });
   const invalid = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ theme: 'rosa' }) });
   assert.equal(invalid.status, 400);
@@ -268,16 +267,14 @@ test('guarda el tema y lo conserva al restaurar un respaldo', async () => {
     theme: 'light',
     minimizeOnLaunch: true,
     onboardingDismissed: false,
-    playtime: 'all',
-    displayRules: []
+    playtime: 'all'
   });
   const minimize = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ minimizeOnLaunch: false }) });
   assert.deepEqual(await minimize.json(), {
     theme: 'light',
     minimizeOnLaunch: false,
     onboardingDismissed: false,
-    playtime: 'all',
-    displayRules: []
+    playtime: 'all'
   });
   assert.equal(
     (await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ minimizeOnLaunch: 'sí' }) })).status,
@@ -292,33 +289,36 @@ test('guarda el tema y lo conserva al restaurar un respaldo', async () => {
     theme: 'light',
     minimizeOnLaunch: false,
     onboardingDismissed: false,
-    playtime: 'all',
-    displayRules: []
+    playtime: 'all'
   });
 });
 
-test('monitor de cada juego: reglas por etiqueta y monitor en la ficha', async () => {
+test('monitor de cada juego: predeterminado en la ficha', async () => {
   // Fuera de la aplicación de escritorio de Windows no hay monitores para elegir.
   assert.deepEqual(await (await fetch(`${base}/api/displays`)).json(), { supported: false, displays: [] });
-  const rules = [
-    { tag: 'Sim Racing', display: { id: '2779098405', label: 'LG TV SSCR2' } },
-    { tag: 'sim racing', display: { id: '1', label: 'Otro' } },
-    { tag: '', display: { id: '1' } }
-  ];
-  const saved = await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ displayRules: rules }) });
-  assert.deepEqual((await saved.json()).displayRules, [rules[0]]);
-  assert.equal((await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ displayRules: 'LG' }) })).status, 400);
-  await fetch(`${base}/api/settings`, { method: 'PUT', ...json({ displayRules: [] }) });
   const display = { id: '2779098405', label: 'LG TV SSCR2' };
   const game = await fetch(`${base}/api/preferences`, { method: 'PUT', ...json({ key: 'steam:10', display }) });
   assert.deepEqual((await game.json()).display, display);
   const listed = (await (await fetch(`${base}/api/library`)).json()).games.find((item) => item.key === 'steam:10');
   assert.deepEqual(listed.display, display);
-  const automatic = await fetch(`${base}/api/preferences`, {
+  const principal = await fetch(`${base}/api/preferences`, {
     method: 'PUT',
     ...json({ key: 'steam:10', display: null })
   });
-  assert.equal('display' in (await automatic.json()), false);
+  assert.equal('display' in (await principal.json()), false);
+});
+
+test('las reglas por etiqueta de la versión de prueba pasan al monitor de cada juego', async () => {
+  const file = path.join(dataDir, 'preferences.json');
+  const prefs = JSON.parse(await fs.readFile(file, 'utf8'));
+  prefs.games['gog galaxy:roto'] = { ...(prefs.games['gog galaxy:roto'] ?? {}), tags: ['Sim Racing'] };
+  prefs.settings = { ...prefs.settings, displayRules: [{ tag: 'sim racing', display: { id: '7', label: 'LG TV' } }] };
+  await fs.writeFile(file, JSON.stringify(prefs));
+  assert.equal(await migrateDisplayRules(), 1);
+  const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.deepEqual(saved.games['gog galaxy:roto'].display, { id: '7', label: 'LG TV' });
+  assert.equal('displayRules' in saved.settings, false);
+  assert.equal(await migrateDisplayRules(), 0);
 });
 
 test('Primeros pasos: juegos por tienda, conexiones y descartar', async () => {

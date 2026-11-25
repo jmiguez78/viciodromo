@@ -3,6 +3,7 @@ import { request } from './api.js';
 import { artColors, heroArtUrl, paintBackdrop, preloadImage, showWordmark, statusText } from './art.js';
 import { decorateActions, playButtonHtml, posterAction, selectTile } from './cards.js';
 import { gameTabs } from './details.js';
+import { decoratePlay, playSplitHtml } from './displays.js';
 import { icon } from './icons.js';
 import { otherCopies } from './library.js';
 import { showPage } from './main.js';
@@ -37,7 +38,7 @@ export function renderGameAside(game) {
   aside.dataset.key = game.key;
   aside.innerHTML =
     '<div class="game-actions">' +
-    playButtonHtml(game, 'button primary game-play') +
+    playSplitHtml(game, playButtonHtml(game, 'button primary game-play')) +
     '<div class="game-secondary"><button type="button" class="button" data-action="favorite">' +
     icon('star', game.favorite) +
     '<span></span></button><button type="button" class="button" data-action="edit">' +
@@ -49,7 +50,8 @@ export function renderGameAside(game) {
     '<circle class="ring-value" cx="18" cy="18" r="15.5" pathLength="100"/></svg><p><strong></strong><span></span></p></div>';
   aside.querySelector('[data-action=favorite] span').textContent = game.favorite ? 'En favoritos' : 'Favorito';
   decorateActions(aside, game);
-  aside.querySelectorAll('[data-action]').forEach((button) => (button.tabIndex = 0));
+  decoratePlay(aside, game);
+  aside.querySelectorAll('[data-action], [data-play-menu]').forEach((button) => (button.tabIndex = 0));
   const stats = aside.querySelector('.game-stats');
   const played = GMLShelves.lastPlayed(game);
   const length = game.meta?.timeToBeat?.normally;
@@ -170,6 +172,11 @@ export function showGame(game) {
 // Enlaces de eventos y estado inicial; se llama una vez desde main.js.
 export function setup() {
   document.querySelector('#game-back').onclick = closeGamePage;
+  // Se conectó o desconectó un monitor: Jugar suma o pierde su menú de monitores.
+  window.addEventListener('gml-displays', () => {
+    const game = state.games.find((item) => item.key === gamePage.dataset.key);
+    if (state.page === 'game' && game) renderGameAside(game);
+  });
   document.querySelector('#game-aside').addEventListener('click', (event) => {
     const action = event.target.closest('[data-action]')?.dataset.action;
     const game = state.games.find((item) => item.key === gamePage.dataset.key);

@@ -1,6 +1,6 @@
-// Monitor de cada juego. Un juego puede tener su monitor elegido en la ficha; si no, manda la primera regla por
-// etiqueta que coincida (Configuración → Monitor de cada juego) y, si tampoco hay, no se hace nada: Windows lo abre
-// donde siempre (el monitor principal).
+// Monitor de cada juego. Cada juego puede tener su monitor predeterminado (se elige desde Jugar ▾ o en Editar); al
+// jugar también se puede elegir otro sólo por esa vez. Sin elección no se hace nada: Windows lo abre donde siempre
+// (el monitor principal).
 // Electron informa los monitores (nombre, rectángulo y su equivalente en píxeles físicos). En Windows, un ayudante de
 // PowerShell busca la ventana del juego (un proceso que corre desde su carpeta) y la lleva al monitor elegido; a
 // MAME, en cambio, se le indica la pantalla al abrirlo (-screen), porque su pantalla completa no se deja mover.
@@ -10,7 +10,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 
-export const MAX_DISPLAY_RULES = 20;
 const WAIT_SECONDS = 240; // lo que puede tardar un lanzador (Epic, Ubisoft, EA) en abrir el juego
 const SETTLE_SECONDS = 30; // después de mover la primera ventana, se siguen mirando las que aparezcan (splash → juego)
 
@@ -69,42 +68,19 @@ export function findDisplay(list, ref) {
   );
 }
 
-// Reglas por etiqueta: [{ tag, display }], sin etiquetas repetidas (sin distinguir mayúsculas).
-export function cleanDisplayRules(value) {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set();
-  const rules = [];
-  for (const item of value) {
-    const tag = typeof item?.tag === 'string' ? item.tag.trim().slice(0, 60) : '';
-    const display = cleanDisplayRef(item?.display);
-    if (!tag || !display || seen.has(tag.toLowerCase())) continue;
-    seen.add(tag.toLowerCase());
-    rules.push({ tag, display });
-    if (rules.length >= MAX_DISPLAY_RULES) break;
-  }
-  return rules;
-}
-
-// A qué monitor va un juego: { display, source: 'game' | 'tag', tag? } o null (se deja a Windows).
-// Si el monitor elegido en la ficha no está conectado, se prueban las reglas.
-export function chooseDisplay(game, rules, list) {
+// A qué monitor va un juego: { display, source: 'once' | 'game' } o null (se deja a Windows). `once` es el elegido
+// sólo para esta vez; si no está conectado, se usa el predeterminado del juego, y si tampoco, ninguno.
+export function chooseDisplay(game, list, once = null) {
   if (!list?.length) return null;
-  if (game?.display) {
-    const display = findDisplay(list, game.display);
-    if (display) return { display, source: 'game' };
-  }
-  const tags = new Set((Array.isArray(game?.tags) ? game.tags : []).map((tag) => String(tag).toLowerCase()));
-  for (const rule of cleanDisplayRules(rules)) {
-    if (!tags.has(rule.tag.toLowerCase())) continue;
-    const display = findDisplay(list, rule.display);
-    if (display) return { display, source: 'tag', tag: rule.tag };
-  }
-  return null;
+  const chosen = once && findDisplay(list, once);
+  if (chosen) return { display: chosen, source: 'once' };
+  const display = game?.display && findDisplay(list, game.display);
+  return display ? { display, source: 'game' } : null;
 }
 
 export function describeChoice(choice) {
   if (!choice) return 'monitor principal';
-  return choice.source === 'tag' ? `${choice.display.name} (etiqueta «${choice.tag}»)` : choice.display.name;
+  return choice.source === 'once' ? `${choice.display.name} (sólo esta vez)` : choice.display.name;
 }
 
 // El monitor de Windows (\\.\DISPLAYn) que contiene el centro del monitor de Electron, en píxeles físicos.

@@ -12,6 +12,8 @@ const PREFERRED_PORT = 47321;
 
 let server;
 let window;
+let guideWindow = null;
+let guideSessionHardened = false;
 const scanMode = process.argv.includes('--scan');
 // Prueba de humo («--smoke=<carpeta>», ver tools/smoke.mjs): abre la interfaz con los datos en esa carpeta, sin
 // tocar los de la PC, anota el resultado en smoke.json y termina.
@@ -75,6 +77,13 @@ async function runScan() {
     await nightlyNews(app.getPath('userData'), log, { mameVersion: async () => (await arcade.info()).version });
   } catch (error) {
     log('warn', 'tarea', `Novedades: ${error.message}`);
+  }
+  // Disponibilidad de guías libres en StrategyWiki (ver guides.mjs), sólo consulta si existen.
+  try {
+    const { nightlyGuides } = await import('./guides.mjs');
+    await nightlyGuides(app.getPath('userData'), log);
+  } catch (error) {
+    log('warn', 'tarea', `Guías: ${error.message}`);
   }
   const { flushLog } = await import('./log.mjs');
   await flushLog();
@@ -226,10 +235,88 @@ function identifyDisplays(items) {
     setTimeout(() => overlay.isDestroyed() || overlay.destroy(), 3000);
   }
 }
+const GUIDE_URL = /^https:\/\//i;
+// Visor auxiliar aislado para guías externas (GameFAQs, Steam, YouTube, IGN): sin acceso a 127.0.0.1 ni a Node.
+function openGuideWindow({ url, title, display, inactive = false } = {}) {
+  if (!GUIDE_URL.test(String(url ?? ''))) return false;
+  const all = screen.getAllDisplays();
+  const targetDisplay = (display?.id && all.find((item) => String(item.id) === String(display.id))) || null;
+  const area = (targetDisplay ?? screen.getPrimaryDisplay()).workArea;
+  const width = targetDisplay
+    ? Math.min(1280, Math.max(760, Math.round(area.width * 0.92)))
+    : Math.min(1040, area.width);
+  const height = targetDisplay
+    ? Math.min(960, Math.max(600, Math.round(area.height * 0.92)))
+    : Math.min(780, area.height);
+  const bounds = {
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+    width,
+    height
+  };
+  const guideSession = session.fromPartition('persist:guides');
+  if (!guideSessionHardened) {
+    guideSessionHardened = true;
+    guideSession.setPermissionRequestHandler((_contents, permission, done) => done(permission === 'fullscreen'));
+    guideSession.setPermissionCheckHandler((_contents, permission) => permission === 'fullscreen');
+  }
+  const windowTitle = title ? `${title} — Guía · Viciódromo` : 'Guía · Viciódromo';
+  if (guideWindow && !guideWindow.isDestroyed()) {
+    guideWindow.setTitle(windowTitle);
+    if (targetDisplay) guideWindow.setBounds(bounds);
+    if (guideWindow.webContents.getURL() !== url) guideWindow.loadURL(url).catch(() => {});
+    if (inactive) guideWindow.showInactive();
+    else {
+      if (guideWindow.isMinimized()) guideWindow.restore();
+      guideWindow.show();
+      guideWindow.focus();
+    }
+    return true;
+  }
+  guideWindow = new BrowserWindow({
+    ...bounds,
+    minWidth: 640,
+    minHeight: 480,
+    title: windowTitle,
+    icon: path.join(root, 'public', 'brand', 'icon-256.png'),
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#07080c' : '#f4f5f8',
+    autoHideMenuBar: true,
+    webPreferences: {
+      partition: 'persist:guides',
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      navigateOnDragDrop: false,
+      spellcheck: false
+    }
+  });
+  guideWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  guideWindow.webContents.on('will-navigate', (event, nextUrl) => {
+    if (!GUIDE_URL.test(nextUrl)) event.preventDefault();
+  });
+  guideWindow.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+    if (GUIDE_URL.test(popupUrl)) shell.openExternal(popupUrl);
+    return { action: 'deny' };
+  });
+  guideWindow.once('ready-to-show', () => {
+    if (!guideWindow || guideWindow.isDestroyed()) return;
+    if (inactive) guideWindow.showInactive();
+    else guideWindow.show();
+  });
+  guideWindow.on('closed', () => {
+    guideWindow = null;
+  });
+  guideWindow.loadURL(url).catch(() => {});
+  return true;
+}
+
 const callbacks = {
   onLaunch: () => window?.minimize(),
   listDisplays,
   identifyDisplays,
+  openGuideWindow,
   onLibraryChange: refreshJumpListSoon,
   // Después de copiar los datos junto al .exe: se vuelve a abrir el portable (no la copia temporal).
   onRestart: () => {
@@ -411,6 +498,9 @@ async function openWindow() {
   window.webContents.on('render-process-gone', (_event, details) =>
     log('error', 'app', `La interfaz se cerró inesperadamente: ${details.reason}`)
   );
+  window.on('closed', () => {
+    if (guideWindow && !guideWindow.isDestroyed()) guideWindow.close();
+  });
   await window.loadURL(origin);
   adoptShortcuts();
   refreshJumpList();

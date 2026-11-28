@@ -67,6 +67,13 @@ async function runScan() {
   } catch (error) {
     log('warn', 'tarea', `Arcade: ${error.message}`);
   }
+  // Novedades de los juegos que seguís (ver news.mjs), con el inventario recién buscado.
+  try {
+    const { nightlyNews } = await import('./news.mjs');
+    await nightlyNews(app.getPath('userData'), log);
+  } catch (error) {
+    log('warn', 'tarea', `Novedades: ${error.message}`);
+  }
   const { flushLog } = await import('./log.mjs');
   await flushLog();
   app.quit();

@@ -8,6 +8,7 @@ import { posterAction } from './cards.js';
 import { defaultDisplay, displays } from './displays.js';
 import { playGame } from './launch.js';
 import { uniqueGames } from './library.js';
+import { unreadFor } from './news.js';
 
 const HIDE_CURSOR_MS = 2500;
 const ROW_SIZE = 7;
@@ -133,6 +134,9 @@ function homeRows(games) {
   );
   const result = [];
   if (picks.length) result.push({ id: 'featured', title: 'Destacados', games: picks.map((pick) => pick.game) });
+  // Juegos que seguís con novedades sin leer (ver news.js): la página del juego las muestra.
+  const news = games.filter((game) => unreadFor(game.key)).slice(0, 20);
+  if (news.length) result.push({ id: 'news', title: 'Con novedades', games: news });
   return result.concat(shelves.map((shelf) => ({ id: shelf.id, title: shelf.title, games: shelf.games })));
 }
 const gameAt = (row, col) => rows[row]?.games[col];

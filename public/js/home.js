@@ -8,6 +8,7 @@ import { icon } from './icons.js';
 import { uniqueGames } from './library.js';
 import { state } from './state.js';
 import { renderCaptureShelf } from './captures.js';
+import { renderNewsShelf } from './news.js';
 
 export const homeShelvesHost = document.querySelector('#home-shelves');
 
@@ -243,6 +244,7 @@ export function renderHome() {
   renderShelves();
   renderHomeEmpty();
   // Sin biblioteca (vacía o con error) Inicio muestra sólo el aviso: tampoco la fila de capturas.
+  renderNewsShelf(document.querySelector('#home-news'), !homeShelvesHost.hidden);
   renderCaptureShelf(document.querySelector('#home-captures'), !homeShelvesHost.hidden);
   renderHealthSignals();
   pruneCoverLoads();
@@ -250,6 +252,10 @@ export function renderHome() {
 
 // Enlaces de eventos y estado inicial; se llama una vez desde main.js.
 export function setup() {
+  // Novedades nuevas o leídas (news.js): la fila de Inicio se vuelve a dibujar.
+  window.addEventListener('gml-news-summary', () => {
+    if (state.page === 'home') renderNewsShelf(document.querySelector('#home-news'), !homeShelvesHost.hidden);
+  });
   homeHero.addEventListener('click', (event) => {
     const action = event.target.closest('[data-hero-action]')?.dataset.heroAction;
     const game = state.games.find((item) => item.key === homeHero.dataset.key);

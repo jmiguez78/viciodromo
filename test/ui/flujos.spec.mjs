@@ -198,7 +198,9 @@ test('tus capturas y videos: en la ficha del juego, en el visor y en Inicio', as
   await expect(page.locator('#game-page [role=tabpanel]:not([hidden]) .capture-summary')).toContainText('F12');
 });
 
-test('novedades: seguir un juego desde la ficha, ver sus fuentes y dejar de seguirlo', async ({ page }) => {
+test('novedades: seguir un juego desde la ficha, elegir qué entra, silenciarlo y verlo en la sección', async ({
+  page
+}) => {
   await openApp(page);
   await openGame(page, 'steam:900006');
   const follow = page.locator('#game-aside [data-action=follow]');
@@ -207,16 +209,39 @@ test('novedades: seguir un juego desde la ficha, ver sus fuentes y dejar de segu
   await page.locator('#game-page [role=tab]', { hasText: 'Novedades' }).click();
   const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
   await expect(panel).toContainText('Seguí este juego');
-  // Sin conexión (pruebas), seguir arma las fuentes que se conocen por la tienda: Steam, la prensa y la versión.
+  // Sin conexión (pruebas), seguir arma las fuentes que se conocen por la tienda: Steam y la versión instalada.
   await panel.locator('button', { hasText: 'Seguir' }).click();
   await expect(follow).toHaveText('Siguiendo');
   await expect(follow).toHaveAttribute('aria-pressed', 'true');
   await expect(panel.locator('.capture-summary')).toContainText('Todavía no hay novedades');
   await panel.locator('.news-sources summary').click();
-  await expect(panel.locator('.news-source strong')).toHaveText(['Steam', 'Prensa especializada', 'Versión instalada']);
+  await expect(panel.locator('.news-source strong')).toHaveText(['Steam', 'Versión instalada']);
   // Destildar una fuente se guarda.
-  await panel.locator('.news-source', { hasText: 'Prensa especializada' }).locator('input').uncheck();
-  await expect(panel.locator('.news-sources summary')).toHaveText('Fuentes (1 activa)');
+  await panel
+    .locator('.news-source')
+    .filter({ has: page.locator('strong', { hasText: /^Steam$/ }) })
+    .locator('input')
+    .uncheck();
+  await expect(panel.locator('.news-sources summary')).toHaveText('Fuentes oficiales (0 activas)');
+  // Qué entra: «Oficial y prensa» por defecto.
+  await expect(panel.locator('.news-mode [aria-pressed=true]')).toHaveText('Oficial y prensa');
+  await panel.locator('.news-mode button', { hasText: 'Solo oficial' }).click();
+  await expect(panel.locator('.news-mode [aria-pressed=true]')).toHaveText('Solo oficial');
+  await panel.locator('button', { hasText: 'Silenciar 30 días' }).click();
+  await expect(panel.locator('.news-muted')).toContainText('Silenciado hasta');
+  await expect(follow).toHaveText('Silenciado');
+  // La sección Novedades lista los juegos que seguís.
+  await page.locator('.nav-item[data-page=news]').click();
+  await expect(page.locator('#news-game option')).toHaveCount(2);
+  await expect(page.locator('#news-inbox')).toContainText('Sin novedades en los últimos 60 días');
+  // Configuración → Novedades: los medios en español vienen activados; los de inglés, no.
+  await page.locator('.nav-item[data-page=settings]').click();
+  await expect(page.locator('#news-settings [data-press=vandal]')).toBeChecked();
+  await expect(page.locator('#news-settings [data-press=pcgamer]')).not.toBeChecked();
+  await expect(page.locator('#news-settings [data-setting=offers]')).not.toBeChecked();
+  // Dejar de seguir.
+  await openGame(page, 'steam:900006');
+  await page.locator('#game-page [role=tab]', { hasText: 'Novedades' }).click();
   await follow.click();
   await expect(follow).toHaveText('Seguir');
   await expect(panel).toContainText('Seguí este juego');

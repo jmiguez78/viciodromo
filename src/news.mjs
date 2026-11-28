@@ -1,7 +1,7 @@
-// Novedades de los juegos que seguís (fase 1, ver docs/arquitectura.md#novedades).
+// Novedades de los juegos que seguís (ver docs/arquitectura.md, src/news.mjs).
 // Al seguir un juego se buscan sus canales en Wikidata (sitio oficial, Bluesky, YouTube y Steam); cada consulta trae
-// lo nuevo de esos canales, de los medios de prensa (filtrado por nombre) y, en Steam, avisa si el juego instalado
-// cambió de versión. Sin servidor propio ni claves: todo se consulta desde esta PC y se guarda en news.json.
+// lo nuevo de esos canales, de los medios de prensa elegidos (filtrado por nombre) y, en Steam, avisa si el juego
+// instalado cambió de versión. Sin servidor propio ni claves: todo se consulta desde esta PC y se guarda en news.json.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,31 +19,47 @@ import {
   titleKey
 } from './feeds.mjs';
 
-const USER_AGENT = 'Viciodromo/0.41 (lanzador de juegos para Windows; https://github.com/jmiguez78/viciodromo)';
-// Medios de prensa base, en español. Cada feed se baja una vez por consulta y se filtra para todos los juegos.
+const USER_AGENT = 'Viciodromo/0.42 (lanzador de juegos para Windows; https://github.com/jmiguez78/viciodromo)';
+// Medios de prensa. Los de base (en español) vienen activados; el resto se activa en Configuración → Novedades.
+// Cada feed se baja una vez por consulta y se filtra para todos los juegos.
 export const PRESS_FEEDS = [
-  { id: '3djuegos', label: '3DJuegos', url: 'https://www.3djuegos.com/feedburner.xml' },
-  { id: 'vandal', label: 'Vandal', url: 'https://vandal.elespanol.com/xml.cgi' },
-  { id: 'ign-latam', label: 'IGN Latinoamérica', url: 'https://latam.ign.com/feed.xml' },
-  { id: 'eurogamer-es', label: 'Eurogamer.es', url: 'https://www.eurogamer.es/feed' }
+  { id: '3djuegos', label: '3DJuegos', lang: 'es', base: true, url: 'https://www.3djuegos.com/feedburner.xml' },
+  { id: 'vandal', label: 'Vandal', lang: 'es', base: true, url: 'https://vandal.elespanol.com/xml.cgi' },
+  { id: 'ign-latam', label: 'IGN Latinoamérica', lang: 'es', base: true, url: 'https://latam.ign.com/feed.xml' },
+  { id: 'eurogamer-es', label: 'Eurogamer.es', lang: 'es', base: true, url: 'https://www.eurogamer.es/feed' },
+  { id: 'ign', label: 'IGN', lang: 'en', url: 'https://feeds.feedburner.com/ign/all' },
+  { id: 'pcgamer', label: 'PC Gamer', lang: 'en', url: 'https://www.pcgamer.com/rss/' },
+  { id: 'gamespot', label: 'GameSpot', lang: 'en', url: 'https://www.gamespot.com/feeds/mashup/' },
+  { id: 'vgc', label: 'VGC', lang: 'en', url: 'https://www.videogameschronicle.com/feed/' },
+  { id: 'eurogamer', label: 'Eurogamer', lang: 'en', url: 'https://www.eurogamer.net/feed' },
+  { id: 'rps', label: 'Rock Paper Shotgun', lang: 'en', url: 'https://www.rockpapershotgun.com/feed' }
 ];
+// Qué entra de cada juego: sólo lo oficial, lo oficial y la prensa (por defecto) o todo (también las ofertas).
+export const MODES = ['official', 'press', 'all'];
 const BLUESKY = 'Q78194383';
 const FIRST_ITEMS = 5;
 const MAX_ITEMS = 50;
 const MAX_KNOWN = 400;
-const MAX_BYTES = 4_000_000;
+const MAX_ALSO = 6;
+const MAX_BYTES = 6_000_000;
 const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
 const REFRESH_MS = 6 * HOUR;
-const REDISCOVER_MS = 30 * 24 * HOUR;
+const REDISCOVER_MS = 30 * DAY;
+// La bandeja muestra lo de los últimos 60 días; la pestaña de cada juego, todo lo guardado.
+const INBOX_MS = 60 * DAY;
+export const MUTE_DAYS = 30;
+// Seguir solo (si se activa en Configuración): los juegos abiertos en los últimos 30 días, de a cinco por consulta.
+const AUTO_FOLLOW_MS = 30 * DAY;
+const AUTO_FOLLOW_MAX = 5;
 // Lo publicado poco antes de seguir el juego (un día) todavía cuenta como nuevo en la consulta siguiente.
-const GRACE_MS = 24 * HOUR;
+const GRACE_MS = DAY;
 const SOURCE_LABELS = {
   steam: 'Steam',
   site: 'Sitio oficial',
   bluesky: 'Bluesky',
   youtube: 'YouTube',
   feed: 'Feed propio',
-  press: 'Prensa especializada',
   local: 'Versión instalada'
 };
 
@@ -81,7 +97,8 @@ export function blueskyHandle(entity) {
   return null;
 }
 
-// Fuentes de un juego a partir de su entidad de Wikidata y de la tienda donde lo tenés.
+// Fuentes oficiales de un juego a partir de su entidad de Wikidata y de la tienda donde lo tenés. La prensa no es
+// una fuente del juego: la decide el modo (ver MODES) y los medios elegidos en Configuración.
 export function sourcesFor(game, entity) {
   const sources = [];
   const add = (source) => {
@@ -105,10 +122,16 @@ export function sourcesFor(game, entity) {
   const channel = claimStrings(entity, 'P2397').find((value) => /^UC[\w-]{22}$/.test(value));
   if (channel)
     add({ id: 'youtube', kind: 'youtube', url: `https://www.youtube.com/feeds/videos.xml?channel_id=${channel}` });
-  add({ id: 'press', kind: 'press' });
   if (game.platform === 'Steam' && game.location) add({ id: 'local', kind: 'local' });
   return sources;
 }
+
+// Modo de un juego. Antes de la 0.42 la prensa era una fuente más: destildada equivale a «sólo oficial».
+export function modeOf(follow) {
+  if (MODES.includes(follow?.mode)) return follow.mode;
+  return follow?.sources?.some((source) => source.kind === 'press' && !source.enabled) ? 'official' : 'press';
+}
+const officialSources = (follow) => (follow?.sources ?? []).filter((source) => source.kind !== 'press');
 
 // Manifiesto de Steam del juego instalado: versión (buildid) y fecha de la última actualización.
 export function parseSteamBuild(text) {
@@ -127,7 +150,29 @@ async function readSteamBuild(game) {
   }
 }
 
-const emptyStore = () => ({ follows: {}, items: {}, known: {}, read: {}, hidden: {}, builds: {}, refreshedAt: null });
+const emptyStore = () => ({
+  follows: {},
+  items: {},
+  known: {},
+  read: {},
+  hidden: {},
+  builds: {},
+  unfollowed: [],
+  settings: {},
+  refreshedAt: null
+});
+
+// Ajustes con sus valores por defecto: medios de base activados, sin ofertas y sin seguir solo.
+export function settingsOf(store) {
+  const saved = store?.settings ?? {};
+  const press = Object.fromEntries(
+    PRESS_FEEDS.map((feed) => [
+      feed.id,
+      typeof saved.press?.[feed.id] === 'boolean' ? saved.press[feed.id] : Boolean(feed.base)
+    ])
+  );
+  return { press, offers: saved.offers === true, autoFollow: saved.autoFollow === true };
+}
 
 export function createNews({
   dataDir,
@@ -152,6 +197,8 @@ export function createNews({
       return change(full) ?? full;
     });
   const pause = () => (pauseMs ? new Promise((resolve) => setTimeout(resolve, pauseMs)) : null);
+  const iso = () => new Date(now()).toISOString();
+  const isMuted = (follow) => Boolean(follow?.mutedUntil) && Date.parse(follow.mutedUntil) > now();
 
   async function get(url, type = 'text') {
     if (offline) throw new Error('Sin conexión (modo de prueba).');
@@ -287,21 +334,28 @@ export function createNews({
   });
 
   // Suma lo nuevo de un juego. La primera vez (initial) quedan sólo las últimas FIRST_ITEMS; después, lo que no se
-  // había visto y se publicó después de seguirlo (con un día de margen).
+  // había visto y se publicó después de seguirlo (con un día de margen). La misma historia en otro medio (mismo
+  // título) no se repite: se suma a la que ya está como «también en».
   function merge(store, key, incoming, { initial = false } = {}) {
     const follow = store.follows[key];
     const known = new Set(store.known[key] ?? []);
     const current = store.items[key] ?? [];
-    const titles = new Set(current.map((item) => titleKey(item.title)));
+    const byTitle = new Map(current.map((item) => [titleKey(item.title), item]));
     const since = Date.parse(follow.since) - GRACE_MS;
     const fresh = [];
     for (const item of incoming.sort((a, b) => b.date.localeCompare(a.date))) {
       if (known.has(item.id)) continue;
       known.add(item.id);
-      // La misma historia en otro medio (o repetida en dos canales) no se muestra dos veces.
-      if (titles.has(titleKey(item.title))) continue;
+      const same = byTitle.get(titleKey(item.title));
+      if (same) {
+        if (same.url !== item.url && same.sourceLabel !== item.sourceLabel)
+          same.also = [...(same.also ?? []), { sourceLabel: item.sourceLabel, url: item.url }]
+            .filter((entry, index, list) => list.findIndex((other) => other.url === entry.url) === index)
+            .slice(0, MAX_ALSO);
+        continue;
+      }
       if (!initial && Date.parse(item.date) < since) continue;
-      titles.add(titleKey(item.title));
+      byTitle.set(titleKey(item.title), item);
       fresh.push(item);
     }
     const added = initial ? fresh.slice(0, FIRST_ITEMS) : fresh;
@@ -310,12 +364,12 @@ export function createNews({
     return added.length;
   }
 
-  // Lo de un juego: sus fuentes oficiales, la prensa ya descargada y su versión instalada.
+  // Lo de un juego: sus fuentes oficiales y, según su modo, la prensa ya descargada.
   async function collect(game, follow, press, at) {
     const incoming = [];
-    const sources = follow.sources.map((source) => ({ ...source }));
+    const sources = officialSources(follow).map((source) => ({ ...source }));
     for (const source of sources) {
-      if (!source.enabled || ['press', 'local'].includes(source.kind)) continue;
+      if (!source.enabled || source.kind === 'local') continue;
       try {
         const raw = await fetchSource(source);
         incoming.push(...raw.map((item) => toItem(item, source, 'official', at)));
@@ -329,17 +383,14 @@ export function createNews({
       source.checkedAt = at;
       await pause();
     }
-    const pressSource = sources.find((source) => source.kind === 'press');
-    if (pressSource?.enabled && press.length) {
+    if (modeOf(follow) !== 'official' && press.length) {
       const matches = pressMatcher({ names: follow.names, studios: follow.studios });
       for (const { feed, items } of press)
         for (const item of items)
           if (matches(item))
             incoming.push(
-              toItem({ ...item, id: 'press:' + hash(item.url) }, { ...pressSource, label: feed.label }, 'press', at)
+              toItem({ ...item, id: 'press:' + hash(item.url) }, { id: 'press', label: feed.label }, 'press', at)
             );
-      pressSource.checkedAt = at;
-      pressSource.status = 'ok';
     }
     return { incoming, sources };
   }
@@ -371,9 +422,9 @@ export function createNews({
     ];
   }
 
-  async function fetchPress() {
+  async function fetchPress(settings) {
     const results = [];
-    for (const feed of PRESS_FEEDS)
+    for (const feed of PRESS_FEEDS.filter((item) => settings.press[item.id]))
       try {
         const page = await get(feed.url);
         results.push({ feed, items: parseFeed(page.text, page.url) });
@@ -383,21 +434,83 @@ export function createNews({
     return results;
   }
 
+  // ── Seguir ────────────────────────────────────────────────────
+  // Arma la entrada de un juego y trae su primera tanda (las cinco más recientes). press(): la prensa descargada.
+  async function begin(game, press) {
+    const found = offline
+      ? { wikidata: null, names: [game.name], studios: [], sources: sourcesFor(game, null) }
+      : await discover(game);
+    const at = iso();
+    const entry = {
+      since: at,
+      discoveredAt: at,
+      mode: 'press',
+      game: { name: game.name, platform: game.platform, id: game.id },
+      ...found
+    };
+    await update((store) => {
+      store.follows[game.key] = entry;
+      store.items[game.key] = [];
+      store.known[game.key] = [];
+      store.unfollowed = store.unfollowed.filter((key) => key !== game.key);
+      return store;
+    });
+    log('info', 'novedades', `Siguiendo ${game.key}: ${found.sources.map((source) => source.id).join(', ')}`);
+    const { incoming, sources } = offline
+      ? { incoming: [], sources: entry.sources }
+      : await collect(game, entry, await press(), at);
+    const build = await steamBuild(game);
+    await update((store) => {
+      if (!store.follows[game.key]) return store;
+      store.follows[game.key] = { ...store.follows[game.key], sources, checkedAt: at };
+      if (build) store.builds[game.key] = build;
+      merge(store, game.key, incoming, { initial: true });
+      store.read[game.key] = iso();
+      return store;
+    });
+  }
+
+  async function follow(game) {
+    if (game.platform === 'Arcade')
+      throw Object.assign(new Error('Los juegos de Arcade no tienen novedades.'), { status: 400 });
+    const settings = settingsOf(await read());
+    await begin(game, async () => (offline ? [] : fetchPress(settings)));
+    onChange(await summary());
+    return forGame(game.key);
+  }
+
+  // Juegos abiertos en los últimos 30 días que todavía no seguís (ni dejaste de seguir a propósito).
+  async function autoFollow(store, list, press) {
+    if (!settingsOf(store).autoFollow) return 0;
+    const skip = new Set([...Object.keys(store.follows), ...store.unfollowed]);
+    const recent = list
+      .filter((game) => game.platform !== 'Arcade' && !skip.has(game.key) && game.lastLaunchedAt)
+      .filter((game) => now() - Date.parse(game.lastLaunchedAt) < AUTO_FOLLOW_MS)
+      .sort((a, b) => b.lastLaunchedAt.localeCompare(a.lastLaunchedAt))
+      .slice(0, AUTO_FOLLOW_MAX);
+    for (const game of recent) await begin(game, press);
+    if (recent.length) log('info', 'novedades', `Seguidos solos: ${recent.map((game) => game.key).join(', ')}`);
+    return recent.length;
+  }
+
   // ── Consultas ─────────────────────────────────────────────────
   let running = null;
-  // Todas las novedades (o las de un juego con only): una sola consulta a la vez.
+  // Todas las novedades (o las de un juego con only): una sola consulta a la vez. Los juegos silenciados no se
+  // consultan.
   function refresh({ only = null } = {}) {
     if (running) return running.then(() => (only ? refresh({ only }) : summary()));
     running = (async () => {
       try {
-        const store = await read();
-        const keys = Object.keys(store.follows).filter((key) => !only || key === only);
+        let store = await read();
+        const settings = settingsOf(store);
+        const list = await games();
+        // La prensa se baja una sola vez por consulta y sólo si algún juego la usa.
+        let pressCache = null;
+        const press = async () => (pressCache ??= offline ? [] : await fetchPress(settings));
+        if (!only && (await autoFollow(store, list, press))) store = await read();
+        const keys = Object.keys(store.follows).filter((key) => (only ? key === only : !isMuted(store.follows[key])));
         if (!keys.length) return summary();
-        const byKey = new Map((await games()).map((game) => [game.key, game]));
-        const wantsPress = keys.some((key) =>
-          store.follows[key].sources.some((source) => source.kind === 'press' && source.enabled)
-        );
-        const press = wantsPress && !offline ? await fetchPress() : [];
+        const byKey = new Map(list.map((game) => [game.key, game]));
         let added = 0;
         for (const key of keys) {
           const game = byKey.get(key) ?? { key, ...store.follows[key].game };
@@ -413,22 +526,23 @@ export function createNews({
                 ...found.sources.map((source) => ({ ...source, ...(saved.get(source.id) ?? {}) })),
                 ...follow.sources.filter((source) => source.kind === 'feed')
               ],
-              discoveredAt: new Date(now()).toISOString()
+              discoveredAt: iso()
             };
           }
-          const at = new Date(now()).toISOString();
+          const at = iso();
+          const mode = modeOf(follow);
           const { incoming, sources } = offline
-            ? { incoming: [], sources: follow.sources }
-            : await collect(game, follow, press, at);
+            ? { incoming: [], sources: officialSources(follow) }
+            : await collect(game, follow, mode === 'official' ? [] : await press(), at);
           await update(async (current) => {
             if (!current.follows[key]) return current;
-            current.follows[key] = { ...current.follows[key], ...follow, sources, checkedAt: at };
+            current.follows[key] = { ...current.follows[key], ...follow, mode, sources, checkedAt: at };
             const local = await localUpdate(current, game, at);
             added += merge(current, key, [...incoming, ...local]);
             return current;
           });
         }
-        await update((current) => ({ ...current, refreshedAt: new Date(now()).toISOString() }));
+        await update((current) => ({ ...current, refreshedAt: iso() }));
         if (added) log('info', 'novedades', `${added} novedades nuevas`);
         const result = await summary();
         onChange(result);
@@ -440,59 +554,26 @@ export function createNews({
     return running;
   }
 
-  async function follow(game) {
-    if (game.platform === 'Arcade')
-      throw Object.assign(new Error('Los juegos de Arcade no tienen novedades.'), { status: 400 });
-    const found = offline
-      ? { wikidata: null, names: [game.name], studios: [], sources: sourcesFor(game, null) }
-      : await discover(game);
-    const at = new Date(now()).toISOString();
-    const entry = {
-      since: at,
-      discoveredAt: at,
-      game: { name: game.name, platform: game.platform, id: game.id },
-      ...found
-    };
-    await update((store) => {
-      store.follows[game.key] = entry;
-      store.items[game.key] = [];
-      store.known[game.key] = [];
-      return store;
-    });
-    log('info', 'novedades', `Siguiendo ${game.key}: ${found.sources.map((source) => source.id).join(', ')}`);
-    // Primera consulta: las últimas novedades de cada fuente, recortadas a las cinco más recientes.
-    const press = offline || !found.sources.some((s) => s.kind === 'press') ? [] : await fetchPress();
-    const { incoming, sources } = offline
-      ? { incoming: [], sources: entry.sources }
-      : await collect(game, entry, press, at);
-    const build = await steamBuild(game);
-    await update((store) => {
-      if (!store.follows[game.key]) return store;
-      store.follows[game.key] = { ...store.follows[game.key], sources, checkedAt: at };
-      if (build) store.builds[game.key] = build;
-      merge(store, game.key, incoming, { initial: true });
-      store.read[game.key] = new Date(now()).toISOString();
-      return store;
-    });
-    onChange(await summary());
-    return forGame(game.key);
-  }
-
   async function unfollow(key) {
     await update((store) => {
       for (const part of ['follows', 'items', 'known', 'read', 'hidden', 'builds']) delete store[part][key];
+      // Que «seguir solo» no lo vuelva a seguir.
+      store.unfollowed = [...new Set([...store.unfollowed, key])].slice(-MAX_KNOWN);
       return store;
     });
     onChange(await summary());
     return forGame(key);
   }
 
+  // ── Lo que se muestra ─────────────────────────────────────────
   const visible = (store, key) => {
     const hidden = new Set(store.hidden[key] ?? []);
-    // Las ofertas quedan guardadas pero no se muestran (fase 2: se podrán activar en Ajustes).
-    return (store.items[key] ?? []).filter((item) => !hidden.has(item.id) && item.type !== 'offer');
+    // Las ofertas se guardan siempre, pero se muestran sólo si se activaron o el juego está en «todo».
+    const offers = settingsOf(store).offers || modeOf(store.follows[key]) === 'all';
+    return (store.items[key] ?? []).filter((item) => !hidden.has(item.id) && (offers || item.type !== 'offer'));
   };
   const unreadOf = (store, key) => {
+    if (isMuted(store.follows[key])) return 0;
     const since = store.read[key] ?? '';
     return visible(store, key).filter((item) => item.foundAt > since).length;
   };
@@ -506,6 +587,7 @@ export function createNews({
     }
     return {
       follows: Object.keys(store.follows),
+      muted: Object.keys(store.follows).filter((key) => isMuted(store.follows[key])),
       unread,
       refreshedAt: store.refreshedAt,
       refreshing: Boolean(running)
@@ -520,10 +602,12 @@ export function createNews({
     return {
       key,
       followed: true,
+      mode: modeOf(follow),
+      mutedUntil: isMuted(follow) ? follow.mutedUntil : null,
       since: follow.since,
       wikidata: follow.wikidata ?? null,
       checkedAt: follow.checkedAt ?? null,
-      sources: follow.sources.map(({ id, kind, label, url, enabled, status, error, checkedAt }) => ({
+      sources: officialSources(follow).map(({ id, kind, label, url, enabled, status, error, checkedAt }) => ({
         id,
         kind,
         label,
@@ -538,9 +622,54 @@ export function createNews({
     };
   }
 
+  // Bandeja: las novedades de los últimos 60 días de todos los juegos seguidos (sin los silenciados), con filtros
+  // por tipo y por juego.
+  async function inbox({ type = null, key = null, limit = 200 } = {}) {
+    const store = await read();
+    const names = new Map((await games()).map((game) => [game.key, game.name]));
+    const after = new Date(now() - INBOX_MS).toISOString();
+    const follows = Object.entries(store.follows).map(([gameKey, follow]) => ({
+      key: gameKey,
+      name: names.get(gameKey) ?? follow.game?.name ?? gameKey,
+      mode: modeOf(follow),
+      mutedUntil: isMuted(follow) ? follow.mutedUntil : null,
+      unread: unreadOf(store, gameKey)
+    }));
+    let items = follows
+      .filter((follow) => !follow.mutedUntil)
+      .flatMap((follow) => {
+        const since = store.read[follow.key] ?? '';
+        return visible(store, follow.key)
+          .filter((item) => item.date >= after)
+          .map((item) => ({ ...item, unread: item.foundAt > since, game: { key: follow.key, name: follow.name } }));
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const types = [...new Set(items.map((item) => item.type))];
+    if (key) items = items.filter((item) => item.game.key === key);
+    if (type) items = items.filter((item) => item.type === type);
+    return {
+      items: items.slice(0, limit),
+      total: items.length,
+      types,
+      follows: follows.sort((a, b) => a.name.localeCompare(b.name, 'es')),
+      unread: follows.reduce((sum, follow) => sum + follow.unread, 0),
+      refreshedAt: store.refreshedAt,
+      refreshing: Boolean(running)
+    };
+  }
+
   async function markRead(key) {
     await update((store) => {
-      if (store.follows[key]) store.read[key] = new Date(now()).toISOString();
+      if (store.follows[key]) store.read[key] = iso();
+      return store;
+    });
+    onChange(await summary());
+    return { ok: true };
+  }
+
+  async function markAllRead() {
+    await update((store) => {
+      for (const key of Object.keys(store.follows)) store.read[key] = iso();
       return store;
     });
     onChange(await summary());
@@ -552,6 +681,7 @@ export function createNews({
       store.hidden[key] = [...new Set([...(store.hidden[key] ?? []), id])].slice(-MAX_KNOWN);
       return store;
     });
+    onChange(await summary());
     return forGame(key);
   }
 
@@ -562,6 +692,62 @@ export function createNews({
       return store;
     });
     return forGame(key);
+  }
+
+  async function setMode(key, mode) {
+    if (!MODES.includes(mode)) throw Object.assign(new Error('Modo no válido.'), { status: 400 });
+    await update((store) => {
+      const follow = store.follows[key];
+      if (!follow) return store;
+      follow.mode = mode;
+      follow.sources = officialSources(follow);
+      return store;
+    });
+    onChange(await summary());
+    return forGame(key);
+  }
+
+  // Silenciar: no se consulta ni cuenta como sin leer hasta la fecha; days 0 lo reactiva.
+  async function mute(key, days = MUTE_DAYS) {
+    await update((store) => {
+      const follow = store.follows[key];
+      if (!follow) return store;
+      if (days > 0) follow.mutedUntil = new Date(now() + days * DAY).toISOString();
+      else delete follow.mutedUntil;
+      return store;
+    });
+    onChange(await summary());
+    return forGame(key);
+  }
+
+  async function settings() {
+    const current = settingsOf(await read());
+    return {
+      press: PRESS_FEEDS.map(({ id, label, lang, base, url }) => ({
+        id,
+        label,
+        lang,
+        base: Boolean(base),
+        url,
+        enabled: current.press[id]
+      })),
+      offers: current.offers,
+      autoFollow: current.autoFollow
+    };
+  }
+  async function saveSettings(patch) {
+    await update((store) => {
+      const current = settingsOf(store);
+      if (patch.press && typeof patch.press === 'object')
+        for (const [id, enabled] of Object.entries(patch.press))
+          if (id in current.press && typeof enabled === 'boolean') current.press[id] = enabled;
+      if (typeof patch.offers === 'boolean') current.offers = patch.offers;
+      if (typeof patch.autoFollow === 'boolean') current.autoFollow = patch.autoFollow;
+      store.settings = current;
+      return store;
+    });
+    onChange(await summary());
+    return settings();
   }
 
   // Una fuente pegada a mano: una ficha de Steam, un perfil de Bluesky, un feed o una página que declare su feed
@@ -591,9 +777,7 @@ export function createNews({
       if (!feedUrl)
         throw Object.assign(
           new Error('Ese enlace no es un feed ni declara uno. Probá con el feed o el blog del juego.'),
-          {
-            status: 400
-          }
+          { status: 400 }
         );
       source = {
         id: 'feed-' + hash(feedUrl).slice(0, 8),
@@ -613,11 +797,11 @@ export function createNews({
   }
 
   // Consulta al abrir (si la última tiene más de seis horas) y cada seis horas mientras la aplicación está abierta.
-  function start({ delayMs = 30000 } = {}) {
+  function startTimers({ delayMs = 30000 } = {}) {
     if (offline) return () => {};
     const due = async () => {
       const store = await read();
-      if (!Object.keys(store.follows).length) return;
+      if (!Object.keys(store.follows).length && !settingsOf(store).autoFollow) return;
       if (store.refreshedAt && now() - Date.parse(store.refreshedAt) < REFRESH_MS - 60000) return;
       await refresh();
     };
@@ -632,5 +816,48 @@ export function createNews({
     };
   }
 
-  return { summary, forGame, follow, unfollow, refresh, markRead, hide, setSource, addSource, start, discover };
+  return {
+    summary,
+    forGame,
+    inbox,
+    follow,
+    unfollow,
+    refresh,
+    markRead,
+    markAllRead,
+    hide,
+    setSource,
+    setMode,
+    mute,
+    settings,
+    saveSettings,
+    addSource,
+    start: startTimers,
+    discover
+  };
+}
+
+// Búsqueda nocturna (electron-main --scan): consulta las novedades sin abrir la ventana, con el inventario guardado.
+export async function nightlyNews(dataDir, log = () => {}) {
+  const readJson = async (name, fallback) => {
+    try {
+      return JSON.parse(await fs.readFile(path.join(dataDir, name), 'utf8'));
+    } catch {
+      return fallback;
+    }
+  };
+  const news = createNews({
+    dataDir,
+    log,
+    games: async () => {
+      const [catalog, prefs] = await Promise.all([readJson('library.json', {}), readJson('preferences.json', {})]);
+      return (catalog.games ?? []).map((game) => ({
+        ...game,
+        lastLaunchedAt: prefs.games?.[game.key]?.lastLaunchedAt ?? null
+      }));
+    }
+  });
+  const result = await news.refresh();
+  log('info', 'tarea', `Novedades: ${result.follows.length} juegos seguidos`);
+  return result;
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { blueskyHandle, createNews, parseSteamBuild, sourcesFor } from '../src/news.mjs';
+import { blueskyHandle, createNews, modeOf, parseSteamBuild, sourcesFor } from '../src/news.mjs';
 
 const silksong = {
   key: 'steam:1030300',
@@ -118,7 +118,7 @@ test('sourcesFor arma las fuentes del juego desde Wikidata y su tienda', () => {
   const sources = sourcesFor(silksong, entity);
   assert.deepEqual(
     sources.map((source) => source.id),
-    ['steam', 'site', 'bluesky', 'youtube', 'press', 'local']
+    ['steam', 'site', 'bluesky', 'youtube', 'local']
   );
   assert.equal(
     sources.find((s) => s.id === 'youtube').url,
@@ -127,12 +127,13 @@ test('sourcesFor arma las fuentes del juego desde Wikidata y su tienda', () => {
   // Un juego de otra tienda también llega a las noticias de Steam si Wikidata conoce su ficha.
   assert.deepEqual(
     sourcesFor(anno, entity).map((source) => source.id),
-    ['steam', 'site', 'bluesky', 'youtube', 'press']
+    ['steam', 'site', 'bluesky', 'youtube']
   );
-  assert.deepEqual(
-    sourcesFor(anno, null).map((source) => source.id),
-    ['press']
-  );
+  assert.deepEqual(sourcesFor(anno, null), []);
+  // Antes de la 0.42 la prensa era una fuente: destildada equivale a «sólo oficial».
+  assert.equal(modeOf({ sources: [{ kind: 'press', enabled: false }] }), 'official');
+  assert.equal(modeOf({ sources: [] }), 'press');
+  assert.equal(modeOf({ mode: 'all' }), 'all');
 });
 
 test('parseSteamBuild lee la versión instalada del manifiesto de Steam', () => {
@@ -156,6 +157,9 @@ test('seguir un juego descubre sus fuentes y trae sólo las últimas cinco noved
   assert.equal(titles.filter((title) => /5 millones/.test(title)).length, 1);
   assert.equal(titles.filter((title) => /roadmap/.test(title)).length, 1);
   assert.ok(!titles.includes('Otro juego cualquiera'));
+  // La misma historia en otro medio o canal queda como «también en».
+  assert.equal(data.items.find((item) => /5 millones/.test(item.title)).also.length, 1);
+  assert.equal(data.items.find((item) => /roadmap/.test(item.title)).also.length, 1);
   assert.deepEqual(
     data.items.map((item) => item.type),
     ['press', 'announcement', 'update', 'update', 'update']
@@ -187,13 +191,17 @@ test('una consulta posterior suma sólo lo nuevo, lo marca sin leer y avisa si S
   assert.deepEqual((await news.summary()).unread, {});
 });
 
-test('fuentes: destildar una deja de consultarla; ocultar y dejar de seguir', async () => {
+test('fuentes y modo: destildar una fuente o elegir «sólo oficial» dejan de consultarlas; ocultar y dejar de seguir', async () => {
   const { news, web } = await setup();
   const first = await news.follow(silksong);
-  await news.setSource(silksong.key, 'press', false);
+  await news.setSource(silksong.key, 'youtube', false);
+  const official = await news.setMode(silksong.key, 'official');
+  assert.equal(official.mode, 'official');
   web.calls.length = 0;
   await news.refresh();
   assert.ok(!web.calls.some((url) => url.includes('3djuegos')));
+  assert.ok(!web.calls.some((url) => url.includes('feeds/videos.xml')));
+  await assert.rejects(news.setMode(silksong.key, 'cualquiera'), /Modo/);
   const hidden = await news.hide(silksong.key, first.items[0].id);
   assert.equal(hidden.items.length, first.items.length - 1);
   const gone = await news.unfollow(silksong.key);
@@ -201,7 +209,7 @@ test('fuentes: destildar una deja de consultarla; ocultar y dejar de seguir', as
   assert.deepEqual((await news.summary()).follows, []);
 });
 
-test('sin Wikidata ni ficha, un juego queda sólo con la prensa; se puede agregar un feed a mano', async () => {
+test('sin Wikidata ni ficha, un juego queda sin fuentes oficiales; se puede agregar un feed a mano', async () => {
   const { news } = await setup({
     pages: {
       'list=search': { query: { search: [] } },
@@ -211,10 +219,8 @@ test('sin Wikidata ni ficha, un juego queda sólo con la prensa; se puede agrega
     }
   });
   const data = await news.follow(anno);
-  assert.deepEqual(
-    data.sources.map((source) => source.id),
-    ['press']
-  );
+  assert.deepEqual(data.sources, []);
+  assert.equal(data.mode, 'press');
   const added = await news.addSource(anno.key, 'https://annoblog.example/');
   assert.ok(
     added.sources.some((source) => source.kind === 'feed' && source.url === 'https://annoblog.example/atom.xml')
@@ -236,4 +242,109 @@ test('sin conexión (pruebas) seguir funciona sin pedir nada a internet', async 
   assert.equal(data.followed, true);
   assert.deepEqual(data.items, []);
   await assert.rejects(news.follow({ key: 'arcade:sf2', platform: 'Arcade', name: 'Street Fighter II' }), /Arcade/);
+});
+
+test('silenciar: no se consulta ni suma sin leer hasta reactivarlo', async () => {
+  const { news, web, advance } = await setup();
+  await news.follow(silksong);
+  const muted = await news.mute(silksong.key);
+  assert.equal(muted.mutedUntil, new Date(NOW + 30 * day).toISOString());
+  assert.deepEqual((await news.summary()).muted, [silksong.key]);
+  advance(60 * 60 * 1000);
+  web.calls.length = 0;
+  await news.refresh();
+  assert.equal(web.calls.length, 0);
+  assert.deepEqual((await news.inbox()).items, []);
+  assert.equal((await news.mute(silksong.key, 0)).mutedUntil, null);
+});
+
+test('bandeja: novedades de los últimos 60 días de todos los juegos, con filtros y «marcar todo como leído»', async () => {
+  const { news, web, advance } = await setup();
+  await news.follow(silksong);
+  advance(60 * 60 * 1000);
+  web.pages['bsky.app/profile/teamcherry.bsky.social/rss'] = rss([
+    ['Nueva expansión: Mareas', NOW + 30 * 60 * 1000, 'https://bsky.app/profile/teamcherry.bsky.social/post/9']
+  ]);
+  await news.refresh();
+  const all = await news.inbox();
+  // Los hotfixes de Steam tienen más de 10 días pero menos de 60: entran; nada más viejo de 60 días.
+  assert.ok(all.items.every((item) => item.date >= new Date(NOW - 60 * day).toISOString()));
+  assert.equal(all.unread, 1);
+  assert.deepEqual(
+    all.follows.map((follow) => [follow.key, follow.unread]),
+    [[silksong.key, 1]]
+  );
+  assert.equal(all.items[0].game.name, 'Hollow Knight: Silksong');
+  assert.ok(all.types.includes('content') && all.types.includes('press'));
+  const content = await news.inbox({ type: 'content' });
+  assert.deepEqual(
+    content.items.map((item) => item.title),
+    ['Nueva expansión: Mareas']
+  );
+  assert.equal((await news.inbox({ key: anno.key })).items.length, 0);
+  await news.markAllRead();
+  assert.equal((await news.inbox()).unread, 0);
+});
+
+test('ajustes: medios elegidos, ofertas y seguir solo los juegos abiertos en el último mes', async () => {
+  const { news, web } = await setup({
+    pages: {
+      GetNewsForApp: {
+        appnews: {
+          newsitems: [
+            {
+              gid: 'o1',
+              title: '50% off this week',
+              url: 'https://store.steampowered.com/news/o1',
+              feed_type: 1,
+              date: Math.round((NOW - day) / 1000)
+            }
+          ]
+        }
+      }
+    }
+  });
+  const defaults = await news.settings();
+  assert.deepEqual(
+    defaults.press.filter((feed) => feed.enabled).map((feed) => feed.id),
+    ['3djuegos', 'vandal', 'ign-latam', 'eurogamer-es']
+  );
+  assert.equal(defaults.offers, false);
+  await news.saveSettings({ press: { vandal: false, ign: true, inventado: true } });
+  await news.follow(silksong);
+  assert.ok(!web.calls.some((url) => url.includes('vandal')));
+  assert.ok(web.calls.some((url) => url.includes('feedburner.com/ign')));
+  // La oferta se guarda, pero se ve sólo con «ofertas» activado o el juego en «todo».
+  assert.ok(!(await news.forGame(silksong.key)).items.some((item) => item.type === 'offer'));
+  await news.saveSettings({ offers: true });
+  assert.ok((await news.forGame(silksong.key)).items.some((item) => item.type === 'offer'));
+  await news.saveSettings({ offers: false });
+  await news.setMode(silksong.key, 'all');
+  assert.ok((await news.forGame(silksong.key)).items.some((item) => item.type === 'offer'));
+});
+
+test('seguir solo: suma los juegos abiertos hace menos de un mes, salvo los que dejaste de seguir', async () => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-news-'));
+  const recent = (key, days) => ({
+    key,
+    platform: 'Epic Games',
+    id: key,
+    name: 'Juego ' + key,
+    lastLaunchedAt: new Date(NOW - days * day).toISOString()
+  });
+  const news = createNews({
+    dataDir,
+    offline: true,
+    now: () => NOW,
+    steamBuild: async () => null,
+    games: async () => [recent('a', 2), recent('b', 10), recent('c', 45), { ...recent('d', 1), platform: 'Arcade' }]
+  });
+  await news.refresh();
+  assert.deepEqual((await news.summary()).follows, []);
+  await news.saveSettings({ autoFollow: true });
+  await news.refresh();
+  assert.deepEqual((await news.summary()).follows.sort(), ['a', 'b']);
+  await news.unfollow('a');
+  await news.refresh();
+  assert.deepEqual((await news.summary()).follows, ['b']);
 });

@@ -378,7 +378,7 @@ function sourcesPanel(data, game, body) {
   const field = el(
     'label',
     'news-add-label',
-    'Agregar una fuente: el blog del juego, su canal de YouTube, un perfil de Bluesky o la ficha de Steam'
+    'Agregar una fuente: el blog del juego, su canal de YouTube, un perfil de Bluesky, su subreddit o la ficha de Steam'
   );
   const input = document.createElement('input');
   input.type = 'url';

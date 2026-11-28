@@ -242,6 +242,12 @@ test('sin Wikidata ni ficha, un juego queda sin fuentes oficiales; se puede agre
   assert.equal(added.items[0].title, 'Anno 1800: nueva DLC');
   assert.equal(added.items[0].type, 'content');
   await assert.rejects(news.addSource(anno.key, 'javascript:alert(1)'), /https/);
+  // Un subreddit pegado a mano queda como fuente de comunidad (se consulta con «Todo»).
+  const reddit = await news.addSource(anno.key, 'https://www.reddit.com/r/anno/');
+  assert.deepEqual(
+    reddit.sources.filter((source) => source.kind === 'reddit').map((source) => [source.label, source.url]),
+    [['Reddit (r/anno)', 'https://www.reddit.com/r/anno/top/.rss?t=week']]
+  );
 });
 
 test('sin conexión (pruebas) seguir funciona sin pedir nada a internet', async () => {
@@ -462,4 +468,23 @@ test('versiones nuevas de MAME: una novedad por versión, en la bandeja y con su
   const current = await setup({ mame: '0.271', pages: { 'api.github.com/repos/mamedev/mame': release } });
   await current.news.refresh();
   assert.equal((await current.news.inbox()).items.length, 0);
+});
+
+test('los juegos seguidos antes de la 0.43 vuelven a mirar Wikidata para sumar el subreddit', async () => {
+  const { news, web, dataDir, advance } = await setup();
+  await news.follow(silksong);
+  // Simula un seguimiento viejo: sin versión de descubrimiento y sin el subreddit.
+  const file = path.join(dataDir, 'news.json');
+  const saved = JSON.parse(await fs.readFile(file, 'utf8'));
+  const follow = saved.follows[silksong.key];
+  delete follow.discoveryVersion;
+  follow.sources = follow.sources.filter((source) => source.kind !== 'reddit');
+  await fs.writeFile(file, JSON.stringify(saved));
+  const { forgetCache } = await import('../src/json-file.mjs');
+  forgetCache();
+  advance(60 * 60 * 1000);
+  web.calls.length = 0;
+  await news.refresh();
+  assert.ok(web.calls.some((url) => url.includes('wikidata')));
+  assert.ok((await news.forGame(silksong.key)).sources.some((source) => source.kind === 'reddit'));
 });

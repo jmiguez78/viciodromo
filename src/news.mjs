@@ -61,6 +61,9 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const REFRESH_MS = 6 * HOUR;
 const REDISCOVER_MS = 30 * DAY;
+// Sube cuando Wikidata aporta canales nuevos (2: el subreddit, en la 0.43): los juegos que se siguieron antes se
+// vuelven a mirar en la consulta siguiente, sin esperar al mes.
+const DISCOVERY_VERSION = 2;
 // La bandeja muestra lo de los últimos 60 días; la pestaña de cada juego, todo lo guardado.
 const INBOX_MS = 60 * DAY;
 export const MUTE_DAYS = 30;
@@ -581,6 +584,7 @@ export function createNews({
     const entry = {
       since: at,
       discoveredAt: at,
+      discoveryVersion: DISCOVERY_VERSION,
       mode: 'press',
       game: { name: game.name, platform: game.platform, id: game.id },
       ...found
@@ -711,7 +715,11 @@ export function createNews({
           const game = byKey.get(key) ?? { key, ...store.follows[key].game };
           let follow = store.follows[key];
           // Una vez por mes se vuelve a mirar Wikidata por canales nuevos (se respeta lo que destildaste).
-          if (!offline && now() - Date.parse(follow.discoveredAt ?? 0) > REDISCOVER_MS) {
+          if (
+            !offline &&
+            (follow.discoveryVersion !== DISCOVERY_VERSION ||
+              now() - Date.parse(follow.discoveredAt ?? 0) > REDISCOVER_MS)
+          ) {
             const found = await discover(game);
             const saved = new Map(follow.sources.map((source) => [source.id, source]));
             follow = {
@@ -721,7 +729,8 @@ export function createNews({
                 ...found.sources.map((source) => ({ ...source, ...(saved.get(source.id) ?? {}) })),
                 ...follow.sources.filter((source) => source.kind === 'feed')
               ],
-              discoveredAt: iso()
+              discoveredAt: iso(),
+              discoveryVersion: DISCOVERY_VERSION
             };
           }
           const at = iso();
@@ -966,7 +975,16 @@ export function createNews({
     let source;
     const steam = /store\.steampowered\.com\/(?:app|news\/app)\/(\d+)/.exec(url);
     const bluesky = /^\/profile\/([^/]+)\/?$/.exec(parsed.pathname);
+    const subreddit =
+      /(?:^|\.)reddit\.com$/.test(parsed.hostname) && /^\/r\/([A-Za-z0-9_]{2,21})/.exec(parsed.pathname);
     if (steam) source = { id: 'steam', kind: 'steam', appid: steam[1], label: SOURCE_LABELS.steam };
+    else if (subreddit)
+      source = {
+        id: 'reddit',
+        kind: 'reddit',
+        label: 'Reddit (r/' + subreddit[1] + ')',
+        url: `https://www.reddit.com/r/${subreddit[1]}/top/.rss?t=week`
+      };
     else if (parsed.hostname === 'bsky.app' && bluesky)
       source = {
         id: 'bluesky',

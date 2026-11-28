@@ -13,7 +13,7 @@ import { loadActivity, setup as setupActivity } from './activity.js';
 import { setup as setupOnboarding } from './onboarding.js';
 import { setup as setupLists } from './lists.js';
 import { loadDisplays, setup as setupDisplays } from './displays.js';
-import { setup as setupNews } from './news.js';
+import { loadInbox, loadNewsSettings, setup as setupNews } from './news.js';
 import { loadCaptureFolders, setupCaptureSettings } from './captures.js';
 import { request } from './api.js';
 import { readSnapshot, saveSnapshot } from './snapshot.js';
@@ -37,6 +37,7 @@ import { initializeSteamUI, loadSteamSettings } from './steam.js';
 export const pageMeta = {
   home: ['Inicio', 'inicio para jugar ahora'],
   library: ['Biblioteca', 'biblioteca colección juegos'],
+  news: ['Novedades', 'novedades noticias parches anuncios prensa juegos seguidos'],
   activity: ['Tu actividad', 'actividad tiempo jugado horas sesiones racha estadísticas'],
   diagnostics: ['Estado de la biblioteca', 'diagnóstico estado sistema revisión plataformas'],
   settings: ['Configuración', 'configuración preferencias ajustes'],
@@ -60,7 +61,9 @@ export function showPage(page, { focus = true } = {}) {
   if (page === 'home') setAmbient(heroGame()?.game);
   if (page === 'diagnostics') loadHealth();
   if (page === 'activity') loadActivity();
+  if (page === 'news') loadInbox();
   if (page === 'settings') {
+    loadNewsSettings();
     document.querySelector('#big-screen').checked = document.body.classList.contains('couch');
     loadSchedule();
     loadCaptureFolders();

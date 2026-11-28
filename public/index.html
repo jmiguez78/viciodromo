@@ -24,6 +24,10 @@
           <button class="nav-item" data-page="library">
             <span data-icon="grid"></span><span class="nav-label">Biblioteca</span>
           </button>
+          <button class="nav-item" data-page="news">
+            <span data-icon="pin"></span><span class="nav-label">Novedades</span
+            ><span id="news-count" class="nav-badge news-badge"></span>
+          </button>
           <button class="nav-item" data-page="activity">
             <span data-icon="clock"></span><span class="nav-label">Tu actividad</span>
           </button>
@@ -83,6 +87,7 @@
           </section>
           <div id="home-empty" class="library-state hidden"></div>
           <div id="home-shelves" class="home-shelves"></div>
+          <section id="home-news" class="shelf news-shelf" hidden></section>
           <section id="home-captures" class="shelf capture-shelf" hidden></section>
         </section>
 
@@ -168,6 +173,27 @@
               </section>
             </div>
           </div>
+        </section>
+        <section id="news-page" class="page hidden">
+          <p class="page-intro">
+            Lo que publicaron los juegos que seguís y lo que dijo la prensa, de los últimos 60 días. Para seguir un
+            juego, abrí su página y tocá Seguir.
+          </p>
+          <div class="news-inbox-toolbar">
+            <div id="news-types" class="news-types" role="group" aria-label="Tipo de novedad"></div>
+            <label class="sort-control news-game-filter"
+              ><span class="visually-hidden">Juego</span
+              ><select id="news-game"></select
+            ></label>
+            <button id="news-read-all" type="button" class="button">
+              <span data-icon="check"></span> Marcar todo como leído
+            </button>
+            <button id="news-refresh" type="button" class="button">
+              <span data-icon="refresh"></span> Buscar de nuevo
+            </button>
+          </div>
+          <p id="news-status" class="capture-summary news-status" role="status"></p>
+          <div id="news-inbox" class="news-list"></div>
         </section>
         <section id="activity-page" class="page hidden">
           <p class="page-intro">
@@ -486,6 +512,18 @@
                     <div class="field-row"><button class="button" type="submit">Guardar carpetas</button></div>
                     <p class="form-error" role="alert"></p>
                   </form>
+                </div>
+              </section>
+              <section class="settings-row">
+                <div class="settings-copy">
+                  <h3>Novedades</h3>
+                  <p>
+                    Los medios que se revisan para los juegos que seguís (entran sólo las notas que nombran el juego),
+                    si se muestran las ofertas y si Viciódromo sigue solo los juegos que abrís.
+                  </p>
+                </div>
+                <div class="settings-control">
+                  <div id="news-settings" class="news-settings"><p class="helper-text">Cargando…</p></div>
                 </div>
               </section>
               <section class="settings-row">

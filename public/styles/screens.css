@@ -2601,15 +2601,26 @@ a.meta-source {
   color: var(--ink-soft);
   font-weight: 700;
 }
-.news-type[data-type='update'] {
-  color: var(--success);
+/* El tipo se distingue por un punto de color; el texto queda con el contraste del chip en los dos temas. */
+.news-type::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  vertical-align: 1px;
 }
-.news-type[data-type='content'],
-.news-type[data-type='event'] {
-  color: var(--warning);
+.news-type[data-type='update']::before {
+  background: var(--success);
 }
-.news-type[data-type='press'] {
-  color: var(--accent-text);
+.news-type[data-type='content']::before,
+.news-type[data-type='event']::before {
+  background: var(--warning);
+}
+.news-type[data-type='press']::before {
+  background: var(--accent);
 }
 .news-new {
   background: var(--accent-soft);
@@ -2651,4 +2662,169 @@ a.meta-source {
   .news-image {
     width: 100%;
   }
+}
+
+/* ── Novedades, fase 2: sección, fila de Inicio, modo y silencio, Configuración ── */
+.news-badge {
+  background: var(--accent);
+  color: var(--white);
+}
+.news-inbox-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.news-types {
+  display: flex;
+  flex: 1 1 360px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.news-game-filter select {
+  max-width: 280px;
+}
+.news-status {
+  margin-bottom: var(--space-3);
+}
+.news-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.news-muted {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--control-radius);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.news-source-none {
+  color: var(--muted);
+  font-size: 13px;
+}
+.news-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+.news-actions .news-hide {
+  margin-top: 0;
+}
+.news-also {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.news-also a {
+  color: var(--accent-text);
+}
+.news-game {
+  padding: 0;
+  font-size: 12px;
+}
+.home-shelves + .news-shelf,
+.news-shelf + .capture-shelf {
+  margin-top: 36px;
+}
+.news-shelf[hidden] {
+  display: none;
+}
+.news-track {
+  display: grid;
+  grid-auto-columns: minmax(260px, 24%);
+  grid-auto-flow: column;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+.news-card {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  color: var(--ink);
+  text-decoration: none;
+}
+.news-card:hover,
+.news-card:focus-visible {
+  border-color: var(--accent-text);
+}
+.news-card.unread {
+  border-color: var(--line-accent);
+}
+.news-card-art {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface));
+}
+.news-card-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.news-card-art .news-type {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--surface);
+}
+.news-card-text {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  padding: var(--space-3);
+}
+.news-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.news-card-text small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.news-settings {
+  display: grid;
+  gap: var(--space-3);
+}
+.news-press {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.news-press legend {
+  width: 100%;
+  margin-bottom: var(--space-1);
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+.news-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  cursor: pointer;
+}
+.news-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
 }

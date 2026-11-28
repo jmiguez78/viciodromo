@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 0.42.0
+
+**Novedades, segunda parte: todas juntas, en Inicio y a tu medida.**
+
+- **Sección Novedades** en la barra lateral, con el número de novedades sin leer. Junta las de los últimos 60 días de todos los juegos que seguís, con filtros por tipo (Actualización, Contenido, Anuncio, Evento, Prensa) y por juego, **Marcar todo como leído** y **Buscar de nuevo**. El nombre del juego en cada novedad abre su página.
+- **Inicio** suma la fila **Novedades de tus juegos**, y el modo sala, la fila **Con novedades** con los juegos que tienen algo sin leer.
+- **Qué entra de cada juego**, en su pestaña Novedades: **Solo oficial**, **Oficial y prensa** (como venía) o **Todo**, que suma las ofertas. La prensa deja de ser una fuente más de la lista.
+- **Silenciar 30 días**: el juego no se consulta ni suma novedades sin leer hasta la fecha (o hasta **Reactivar**). Su botón dice **Silenciado**.
+- **La misma historia en varios medios** aparece una vez, con **También en Vandal y IGN Latinoamérica** y sus enlaces.
+- **Configuración → Novedades**: qué medios se revisan (los cuatro en español vienen activados; se suman IGN, PC Gamer, GameSpot, VGC, Eurogamer y Rock Paper Shotgun en inglés), **Mostrar ofertas y descuentos** y **Seguir solos los juegos que abrís**: los abiertos en el último mes, de a cinco por consulta, salvo los que dejaste de seguir.
+- La **búsqueda nocturna** también consulta las novedades.
+
 ## 0.41.0
 
 **Novedades de los juegos que seguís.** Marcás un juego con **Seguir** y Viciódromo junta en un solo lugar sus parches, anuncios y lo que dice la prensa, sin depender de ninguna tienda.

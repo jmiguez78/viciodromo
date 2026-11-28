@@ -38,6 +38,59 @@ for (const theme of ['dark', 'light']) {
       await show(page, 'settings');
       expect(await audit(page)).toEqual([]);
     });
+    test('Novedades: sección y pestaña del juego', async ({ page }) => {
+      const item = (id, type, unread) => ({
+        id,
+        type,
+        layer: type === 'press' ? 'press' : 'official',
+        unread,
+        title: 'Título de prueba ' + id,
+        url: 'https://example.com/' + id,
+        date: '2026-11-27T12:00:00.000Z',
+        text: 'Un extracto de la novedad.',
+        sourceLabel: 'Steam',
+        image: null,
+        also: [{ sourceLabel: 'Vandal', url: 'https://example.com/v' }],
+        game: { key: 'steam:900000', name: 'Ámbar' }
+      });
+      const items = [item('a', 'press', true), item('b', 'update', false), item('c', 'content', false)];
+      await page.route('**/api/news/inbox**', (route) =>
+        route.fulfill({
+          json: {
+            items,
+            total: 3,
+            types: ['press', 'update', 'content'],
+            follows: [{ key: 'steam:900000', name: 'Ámbar', unread: 1 }],
+            unread: 1,
+            refreshedAt: null
+          }
+        })
+      );
+      await page.route('**/api/news/game/**', (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({
+              json: {
+                key: 'steam:900000',
+                followed: true,
+                mode: 'press',
+                mutedUntil: null,
+                checkedAt: null,
+                sources: [{ id: 'steam', kind: 'steam', label: 'Steam', enabled: true, status: 'error' }],
+                items,
+                unread: 0
+              }
+            })
+          : route.continue()
+      );
+      await openApp(page);
+      await show(page, 'news');
+      await page.waitForSelector('#news-inbox .news-item');
+      expect(await audit(page)).toEqual([]);
+      await openGame(page, 'steam:900000');
+      await page.locator('#game-page [role=tab]', { hasText: 'Novedades' }).click();
+      await page.locator('#game-page .news-sources summary').click();
+      expect(await audit(page)).toEqual([]);
+    });
     test('Tu actividad', async ({ page }) => {
       await openApp(page);
       await show(page, 'activity');

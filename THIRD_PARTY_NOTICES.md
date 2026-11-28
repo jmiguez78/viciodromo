@@ -51,8 +51,9 @@ Estos datos no viajan con Viciódromo: se descargan en tu PC cuando hacen falta 
 | [IGDB](https://www.igdb.com/) (Twitch) | Fichas, valoraciones, capturas y videos | [Condiciones de la API de IGDB](https://api-docs.igdb.com/); cada usuario usa su propia aplicación de Twitch |
 | [Wikipedia](https://es.wikipedia.org/) y [Wikidata](https://www.wikidata.org/) | Descripciones de juegos de Arcade e identificadores | Textos de Wikipedia: CC BY-SA 4.0, se muestran con enlace al artículo; Wikidata: CC0 |
 | [libretro-thumbnails](https://github.com/libretro-thumbnails/MAME) | Portadas, capturas y logos de Arcade | Las del proyecto libretro-thumbnails |
+| [StrategyWiki](https://strategywiki.org/wiki/StrategyWiki:License) | Texto de guías y soluciones que elegís descargar para leer sin conexión (las imágenes se cargan desde el sitio, no se guardan) | CC BY-SA 4.0 (aportes anteriores al 1/10/2024: CC BY-SA 3.0); se muestran con autoría, licencia, revisión y enlace a la página original. Las pistas armadas a partir de esos textos son adaptaciones bajo la misma licencia |
 | [AntoPISA / progetto-SNAPS](https://www.progettosnaps.net/support/) | `catver.ini`, `series.ini`, `bestgames.ini` y `command.dat` (categorías, sagas, ranking y movimientos de Arcade) | © AntoPISA. No publican una licencia de redistribución, por eso Viciódromo no los incluye: los descarga de [su repositorio](https://github.com/AntoPISA/MAME_SupportFiles) cada 30 días |
 
 ## Marcas
 
-Steam, Epic Games, Xbox, Microsoft Store, Ubisoft Connect, EA app, GOG Galaxy, NVIDIA, IGDB, Twitch y MAME son marcas de sus dueños. Viciódromo no está asociado a ellos ni tiene su respaldo; los nombres se usan sólo para identificar las tiendas y servicios compatibles.
+Steam, Epic Games, Xbox, Microsoft Store, Ubisoft Connect, EA app, GOG Galaxy, NVIDIA, IGDB, Twitch, MAME, GameFAQs, IGN y YouTube son marcas de sus dueños. Viciódromo no está asociado a ellos ni tiene su respaldo; los nombres se usan sólo para identificar las tiendas y servicios compatibles o enlazados.

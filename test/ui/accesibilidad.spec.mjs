@@ -91,6 +91,44 @@ for (const theme of ['dark', 'light']) {
       await page.locator('#game-page .news-sources summary').click();
       expect(await audit(page)).toEqual([]);
     });
+    test('Guía en la ficha del juego', async ({ page }) => {
+      await page.route('**/api/guides/game/**', (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({
+              json: {
+                key: 'steam:900000',
+                name: 'Ámbar',
+                links: [
+                  {
+                    id: 'gamefaqs',
+                    label: 'GameFAQs',
+                    description: 'El catálogo más grande de guías y preguntas frecuentes.',
+                    url: 'https://gamefaqs.gamespot.com/search?game=%C3%81mbar',
+                    kind: 'link'
+                  }
+                ],
+                progress: { currentSection: 'Capítulo 4', mode: 'hints', lastUrl: null, updatedAt: null },
+                notes: [
+                  {
+                    id: 'n-test',
+                    section: 'Capítulo 4',
+                    text: 'Nota de prueba para auditoría de accesibilidad.',
+                    captures: [],
+                    updatedAt: '2026-11-28T12:00:00.000Z'
+                  }
+                ],
+                viewerSupported: true,
+                companionDisplay: { id: '2', name: 'LG TV', number: 2, primary: false }
+              }
+            })
+          : route.continue()
+      );
+      await openApp(page);
+      await openGame(page, 'steam:900000');
+      await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+      await page.waitForSelector('#game-page .guide-note-item');
+      expect(await audit(page)).toEqual([]);
+    });
     test('Tu actividad', async ({ page }) => {
       await openApp(page);
       await show(page, 'activity');

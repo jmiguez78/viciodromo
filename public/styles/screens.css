@@ -2878,3 +2878,258 @@ strong.news-game {
   padding: 0;
   font-size: 12px;
 }
+
+/* ── Guías, fase 1: enlaces, «Acá estoy» y notas por tramo ── */
+.guide-tab {
+  display: grid;
+  gap: var(--space-4);
+}
+.guide-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+.guide-card-head,
+.guide-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+.guide-card h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 15px;
+}
+.guide-card h3 .icon {
+  width: 17px;
+  height: 17px;
+  color: var(--accent-text);
+}
+.guide-card .helper-text {
+  margin: 2px 0 0;
+}
+.guide-section-form {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.guide-section-form label,
+.guide-note-form label {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+.guide-section-form input,
+.guide-note-form input,
+.guide-note-form textarea,
+.guide-note-edit input,
+.guide-note-edit textarea {
+  min-width: 0;
+  padding: 8px var(--space-3);
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.guide-section-form input,
+.guide-note-form input,
+.guide-note-edit input {
+  height: var(--control-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.guide-links {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.guide-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+}
+.guide-link-info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.guide-link-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.guide-link-info small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.guide-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.guide-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+.guide-note-form,
+.guide-note-edit {
+  display: grid;
+  gap: var(--space-2);
+}
+.guide-note-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+}
+.guide-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.guide-notes-list {
+  display: grid;
+  gap: var(--space-3);
+}
+.guide-note-item {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+}
+.guide-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+.guide-note-tags,
+.guide-note-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.guide-note-body {
+  display: grid;
+  gap: var(--space-2);
+}
+.guide-note-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.guide-note-captures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.guide-capture-thumb {
+  width: 120px;
+  height: 68px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+.guide-capture-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.guide-capture-missing {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.guide-capture-picker {
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+}
+.guide-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--space-2);
+}
+.guide-picker-item {
+  height: 58px;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+.guide-picker-item.selected {
+  border-color: var(--accent);
+}
+.guide-picker-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.guide-selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.guide-selected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.guide-selected-chip img {
+  width: 44px;
+  height: 26px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+@media (max-width: 640px) {
+  .guide-section-form {
+    grid-template-columns: 1fr;
+  }
+}

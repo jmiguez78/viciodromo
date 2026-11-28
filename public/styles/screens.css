@@ -2601,15 +2601,26 @@ a.meta-source {
   color: var(--ink-soft);
   font-weight: 700;
 }
-.news-type[data-type='update'] {
-  color: var(--success);
+/* El tipo se distingue por un punto de color; el texto queda con el contraste del chip en los dos temas. */
+.news-type::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  vertical-align: 1px;
 }
-.news-type[data-type='content'],
-.news-type[data-type='event'] {
-  color: var(--warning);
+.news-type[data-type='update']::before {
+  background: var(--success);
 }
-.news-type[data-type='press'] {
-  color: var(--accent-text);
+.news-type[data-type='content']::before,
+.news-type[data-type='event']::before {
+  background: var(--warning);
+}
+.news-type[data-type='press']::before {
+  background: var(--accent);
 }
 .news-new {
   background: var(--accent-soft);

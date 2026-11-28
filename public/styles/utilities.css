@@ -34,7 +34,8 @@
   .hero-thumb {
     transition: none;
   }
-  .sync-button.busy .icon {
+  .sync-button.busy .icon,
+  .button.busy .icon {
     animation: none;
   }
   .ring-value {

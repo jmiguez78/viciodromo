@@ -14,12 +14,14 @@ import {
   normalizeText,
   parseFeed,
   parseSteamNews,
+  parseGdelt,
+  plainText,
   pressMatcher,
   safeUrl,
   titleKey
 } from './feeds.mjs';
 
-const USER_AGENT = 'Viciodromo/0.42 (lanzador de juegos para Windows; https://github.com/jmiguez78/viciodromo)';
+const USER_AGENT = 'Viciodromo/0.43 (lanzador de juegos para Windows; https://github.com/jmiguez78/viciodromo)';
 // Medios de prensa. Los de base (en español) vienen activados; el resto se activa en Configuración → Novedades.
 // Cada feed se baja una vez por consulta y se filtra para todos los juegos.
 export const PRESS_FEEDS = [
@@ -34,9 +36,22 @@ export const PRESS_FEEDS = [
   { id: 'eurogamer', label: 'Eurogamer', lang: 'en', url: 'https://www.eurogamer.net/feed' },
   { id: 'rps', label: 'Rock Paper Shotgun', lang: 'en', url: 'https://www.rockpapershotgun.com/feed' }
 ];
-// Qué entra de cada juego: sólo lo oficial, lo oficial y la prensa (por defecto) o todo (también las ofertas).
+// Qué entra de cada juego: sólo lo oficial, lo oficial y la prensa (por defecto) o todo (también las ofertas, lo
+// más votado del subreddit y el buscador abierto de noticias, GDELT).
 export const MODES = ['official', 'press', 'all'];
 const BLUESKY = 'Q78194383';
+// Las versiones nuevas de MAME se guardan como si fueran un juego más, con esta clave.
+export const MAME_KEY = 'mame';
+const MAME_NAME = 'MAME (emulador)';
+// Tiendas donde se puede leer la versión instalada.
+const LOCAL_LABELS = {
+  Steam: ['Steam, en esta PC', 'Steam'],
+  'Epic Games': ['Epic Games, en esta PC', 'Epic Games'],
+  'Xbox / Microsoft Store': ['Xbox, en esta PC', 'La app Xbox']
+};
+// GDELT pide como mucho una búsqueda cada cinco segundos.
+const OPEN_SEARCH_MS = 5500;
+const LANGUAGES = { es: 'spanish', en: 'english' };
 const FIRST_ITEMS = 5;
 const MAX_ITEMS = 50;
 const MAX_KNOWN = 400;
@@ -46,6 +61,9 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const REFRESH_MS = 6 * HOUR;
 const REDISCOVER_MS = 30 * DAY;
+// Sube cuando Wikidata aporta canales nuevos (2: el subreddit, en la 0.43): los juegos que se siguieron antes se
+// vuelven a mirar en la consulta siguiente, sin esperar al mes.
+const DISCOVERY_VERSION = 2;
 // La bandeja muestra lo de los últimos 60 días; la pestaña de cada juego, todo lo guardado.
 const INBOX_MS = 60 * DAY;
 export const MUTE_DAYS = 30;
@@ -59,6 +77,7 @@ const SOURCE_LABELS = {
   site: 'Sitio oficial',
   bluesky: 'Bluesky',
   youtube: 'YouTube',
+  reddit: 'Reddit',
   feed: 'Feed propio',
   local: 'Versión instalada'
 };
@@ -122,7 +141,15 @@ export function sourcesFor(game, entity) {
   const channel = claimStrings(entity, 'P2397').find((value) => /^UC[\w-]{22}$/.test(value));
   if (channel)
     add({ id: 'youtube', kind: 'youtube', url: `https://www.youtube.com/feeds/videos.xml?channel_id=${channel}` });
-  if (game.platform === 'Steam' && game.location) add({ id: 'local', kind: 'local' });
+  const subreddit = claimStrings(entity, 'P3984').find((value) => /^[A-Za-z0-9_]{2,21}$/.test(value));
+  if (subreddit)
+    add({
+      id: 'reddit',
+      kind: 'reddit',
+      label: 'Reddit (r/' + subreddit + ')',
+      url: `https://www.reddit.com/r/${subreddit}/top/.rss?t=week`
+    });
+  if (LOCAL_LABELS[game.platform] && game.location) add({ id: 'local', kind: 'local' });
   return sources;
 }
 
@@ -140,15 +167,77 @@ export function parseSteamBuild(text) {
   const updated = Number(value('LastUpdated'));
   return buildid ? { buildid, updatedAt: updated > 0 ? new Date(updated * 1000).toISOString() : null } : null;
 }
-async function readSteamBuild(game) {
-  if (game.platform !== 'Steam' || !game.location || !/^\d+$/.test(String(game.id))) return null;
-  const manifest = path.join(path.dirname(path.dirname(game.location)), `appmanifest_${game.id}.acf`);
+// Epic: el manifiesto .item del juego (por CatalogItemId, AppName o carpeta) trae AppVersionString.
+export function parseEpicManifest(text, game) {
+  let item;
   try {
-    return parseSteamBuild(await fs.readFile(manifest, 'utf8'));
+    item = JSON.parse(text);
   } catch {
     return null;
   }
+  const same =
+    item?.CatalogItemId === game.id ||
+    item?.AppName === game.id ||
+    (item?.InstallLocation &&
+      game.location &&
+      path.resolve(item.InstallLocation).toLowerCase() === path.resolve(game.location).toLowerCase());
+  return same && item.AppVersionString ? { buildid: String(item.AppVersionString), updatedAt: null } : null;
 }
+// Xbox: la versión del paquete, en <Identity Version="…"> de MicrosoftGame.config o appxmanifest.xml.
+export function parseXboxVersion(text) {
+  const version = /<Identity\b[^>]*\bVersion="([^"]+)"/i.exec(String(text ?? ''))?.[1];
+  return version ? { buildid: version, updatedAt: null } : null;
+}
+// Los archivos de Xbox pueden venir en UTF-16.
+async function readText(file) {
+  const bytes = await fs.readFile(file);
+  return bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.toString('utf16le') : bytes.toString('utf8');
+}
+// Versión instalada en esta PC: Steam (buildid del manifiesto), Epic (AppVersionString) y Xbox (versión del paquete).
+async function readInstalledVersion(game) {
+  if (!game.location) return null;
+  try {
+    if (game.platform === 'Steam' && /^\d+$/.test(String(game.id)))
+      return parseSteamBuild(
+        await readText(path.join(path.dirname(path.dirname(game.location)), `appmanifest_${game.id}.acf`))
+      );
+    if (game.platform === 'Epic Games') {
+      const dir = path.join(
+        process.env.ProgramData ?? 'C:\\ProgramData',
+        'Epic',
+        'EpicGamesLauncher',
+        'Data',
+        'Manifests'
+      );
+      for (const name of (await fs.readdir(dir)).filter((file) => file.endsWith('.item'))) {
+        const found = parseEpicManifest(await readText(path.join(dir, name)), game);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (game.platform === 'Xbox / Microsoft Store')
+      for (const file of [
+        path.join(game.location, 'Content', 'MicrosoftGame.config'),
+        path.join(game.location, 'Content', 'appxmanifest.xml'),
+        path.join(game.location, 'MicrosoftGame.config'),
+        path.join(game.location, 'appxmanifest.xml')
+      ]) {
+        const found = await readText(file).then(parseXboxVersion, () => null);
+        if (found) return found;
+      }
+  } catch {
+    /* sin manifiesto legible: no hay versión que comparar */
+  }
+  return null;
+}
+
+// «0.270 (mame0270)» o «mame0271» → 270 / 271, para comparar versiones de MAME.
+export function parseMameVersion(text) {
+  const value = String(text ?? '');
+  const match = /(\d+)\.(\d+)/.exec(value) ?? /mame(\d)(\d{3})/i.exec(value);
+  return match ? Number(match[1]) * 1000 + Number(match[2]) : null;
+}
+const mameLabel = (number) => Math.floor(number / 1000) + '.' + String(number % 1000).padStart(3, '0');
 
 const emptyStore = () => ({
   follows: {},
@@ -171,7 +260,12 @@ export function settingsOf(store) {
       typeof saved.press?.[feed.id] === 'boolean' ? saved.press[feed.id] : Boolean(feed.base)
     ])
   );
-  return { press, offers: saved.offers === true, autoFollow: saved.autoFollow === true };
+  return {
+    press,
+    offers: saved.offers === true,
+    autoFollow: saved.autoFollow === true,
+    mameReleases: saved.mameReleases !== false
+  };
 }
 
 export function createNews({
@@ -182,7 +276,10 @@ export function createNews({
   log = () => {},
   now = () => Date.now(),
   pauseMs = 1200,
-  steamBuild = readSteamBuild,
+  installedVersion = readInstalledVersion,
+  // Versión del MAME configurado («0.270 (mame0270)»), para avisar cuando sale una nueva.
+  mameVersion = async () => null,
+  openSearchMs = OPEN_SEARCH_MS,
   onChange = () => {}
 } = {}) {
   const file = createVersionedFile(path.join(dataDir, 'news.json'), {
@@ -198,6 +295,7 @@ export function createNews({
     });
   const pause = () => (pauseMs ? new Promise((resolve) => setTimeout(resolve, pauseMs)) : null);
   const iso = () => new Date(now()).toISOString();
+  let lastOpenSearch = 0;
   const isMuted = (follow) => Boolean(follow?.mutedUntil) && Date.parse(follow.mutedUntil) > now();
 
   async function get(url, type = 'text') {
@@ -308,7 +406,7 @@ export function createNews({
   async function fetchSource(source) {
     if (source.kind === 'steam') {
       const data = await get(
-        `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${source.appid}&count=15&maxlength=1500&format=json`,
+        `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${source.appid}&count=20&maxlength=1500&feeds=steam_community_announcements&format=json`,
         'json'
       );
       return parseSteamNews(data);
@@ -364,15 +462,45 @@ export function createNews({
     return added.length;
   }
 
-  // Lo de un juego: sus fuentes oficiales y, según su modo, la prensa ya descargada.
-  async function collect(game, follow, press, at) {
+  // Buscador abierto (GDELT): notas de los últimos siete días que nombran el juego, en los idiomas de los medios
+  // elegidos. Respeta la pausa que pide el servicio entre búsquedas.
+  async function openSearch(follow, languages) {
+    const name = String(follow.game?.name ?? follow.names?.[0] ?? '')
+      .replace(/["()]/g, ' ')
+      .trim();
+    if (name.length < 3 || !languages.length) return [];
+    const langs = languages.map((lang) => 'sourcelang:' + LANGUAGES[lang]);
+    const query = `"${name}" ${langs.length > 1 ? '(' + langs.join(' OR ') + ')' : langs[0]}`;
+    const wait = lastOpenSearch + openSearchMs - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastOpenSearch = Date.now();
+    const data = await get(
+      `https://api.gdeltproject.org/api/v2/doc/doc?${new URLSearchParams({
+        query,
+        mode: 'ArtList',
+        format: 'json',
+        maxrecords: '25',
+        timespan: '7d',
+        sort: 'DateDesc'
+      })}`,
+      'json'
+    );
+    return parseGdelt(data);
+  }
+
+  // Lo de un juego: sus fuentes oficiales y, según su modo, la prensa ya descargada; con «todo», también el
+  // subreddit y el buscador abierto (languages: los idiomas de los medios elegidos).
+  async function collect(game, follow, press, at, { languages = [] } = {}) {
     const incoming = [];
+    const mode = modeOf(follow);
     const sources = officialSources(follow).map((source) => ({ ...source }));
     for (const source of sources) {
       if (!source.enabled || source.kind === 'local') continue;
+      if (source.kind === 'reddit' && mode !== 'all') continue;
       try {
         const raw = await fetchSource(source);
-        incoming.push(...raw.map((item) => toItem(item, source, 'official', at)));
+        const layer = source.kind === 'reddit' ? 'community' : 'official';
+        incoming.push(...raw.map((item) => toItem(item, source, layer, at)));
         source.status = 'ok';
         delete source.error;
       } catch (error) {
@@ -383,8 +511,8 @@ export function createNews({
       source.checkedAt = at;
       await pause();
     }
-    if (modeOf(follow) !== 'official' && press.length) {
-      const matches = pressMatcher({ names: follow.names, studios: follow.studios });
+    const matches = pressMatcher({ names: follow.names, studios: follow.studios });
+    if (mode !== 'official' && press.length) {
       for (const { feed, items } of press)
         for (const item of items)
           if (matches(item))
@@ -392,28 +520,40 @@ export function createNews({
               toItem({ ...item, id: 'press:' + hash(item.url) }, { id: 'press', label: feed.label }, 'press', at)
             );
     }
+    if (mode === 'all' && !offline)
+      try {
+        // Sólo el título: GDELT no trae el texto, y un nombre ambiguo necesita también el estudio.
+        for (const item of await openSearch(follow, languages))
+          if (matches({ title: item.title }))
+            incoming.push(
+              toItem({ ...item, id: 'press:' + hash(item.url) }, { id: 'open', label: item.source }, 'press', at)
+            );
+      } catch (error) {
+        log('info', 'novedades', `${game.key} · buscador abierto: ${error.message}`);
+      }
     return { incoming, sources };
   }
-  // Steam cambió la versión instalada desde la última consulta: una novedad local.
+  // La tienda instaló otra versión desde la última consulta: una novedad local.
   async function localUpdate(store, game, at) {
     const follow = store.follows[game.key];
     if (!follow.sources.some((source) => source.kind === 'local' && source.enabled)) return [];
-    const build = await steamBuild(game);
+    const build = await installedVersion(game);
     if (!build) return [];
     const before = store.builds[game.key];
     store.builds[game.key] = build;
     if (!before || before.buildid === build.buildid) return [];
     const date = build.updatedAt ?? at;
     const played = game.lastLaunchedAt && Date.parse(game.lastLaunchedAt) < Date.parse(date);
+    const [label, shop] = LOCAL_LABELS[game.platform] ?? ['En esta PC', 'La tienda'];
     return [
       {
         id: 'local:' + build.buildid,
         layer: 'local',
         type: 'update',
         source: 'local',
-        sourceLabel: 'Steam, en esta PC',
-        title: played ? 'Se actualizó desde la última vez que jugaste' : 'Steam instaló una versión nueva',
-        url: `https://store.steampowered.com/news/app/${game.id}`,
+        sourceLabel: label,
+        title: played ? 'Se actualizó desde la última vez que jugaste' : shop + ' instaló una versión nueva',
+        url: game.platform === 'Steam' ? `https://store.steampowered.com/news/app/${game.id}` : null,
         date,
         text: `Versión ${build.buildid} (antes ${before.buildid}).`,
         image: null,
@@ -444,6 +584,7 @@ export function createNews({
     const entry = {
       since: at,
       discoveredAt: at,
+      discoveryVersion: DISCOVERY_VERSION,
       mode: 'press',
       game: { name: game.name, platform: game.platform, id: game.id },
       ...found
@@ -459,7 +600,7 @@ export function createNews({
     const { incoming, sources } = offline
       ? { incoming: [], sources: entry.sources }
       : await collect(game, entry, await press(), at);
-    const build = await steamBuild(game);
+    const build = await installedVersion(game);
     await update((store) => {
       if (!store.follows[game.key]) return store;
       store.follows[game.key] = { ...store.follows[game.key], sources, checkedAt: at };
@@ -493,6 +634,54 @@ export function createNews({
     return recent.length;
   }
 
+  // Versión nueva de MAME: la última publicada en GitHub, si es más nueva que la configurada. Se guarda como las
+  // novedades de un juego (MAME_KEY), una por versión.
+  async function checkMame() {
+    let installed;
+    try {
+      installed = parseMameVersion(await mameVersion());
+      if (!installed) return 0;
+      const release = await get('https://api.github.com/repos/mamedev/mame/releases/latest', 'json');
+      const latest = parseMameVersion(release?.tag_name);
+      if (!latest || latest <= installed) return 0;
+      const id = 'mame:' + release.tag_name;
+      const at = iso();
+      let added = 0;
+      await update((store) => {
+        const known = new Set(store.known[MAME_KEY] ?? []);
+        if (known.has(id)) return store;
+        known.add(id);
+        store.known[MAME_KEY] = [...known].slice(-MAX_KNOWN);
+        const notes = plainText(release.body, 280);
+        store.items[MAME_KEY] = [
+          {
+            id,
+            layer: 'official',
+            type: 'update',
+            source: 'mame',
+            sourceLabel: 'MAME en GitHub',
+            title: `MAME ${mameLabel(latest)} ya está disponible`,
+            url: safeUrl(release.html_url) ?? 'https://www.mamedev.org/release.html',
+            date: Number.isFinite(Date.parse(release.published_at)) ? new Date(release.published_at).toISOString() : at,
+            text: `Tenés la ${mameLabel(installed)}.` + (notes ? ' ' + notes : ''),
+            image: null,
+            foundAt: at
+          },
+          ...(store.items[MAME_KEY] ?? [])
+        ].slice(0, 10);
+        added = 1;
+        return store;
+      });
+      if (added) log('info', 'novedades', `MAME ${mameLabel(latest)} disponible (instalada ${mameLabel(installed)})`);
+      return added;
+    } catch (error) {
+      log('info', 'novedades', `MAME: ${error.message}`);
+      return 0;
+    }
+  }
+  // Claves que no son juegos seguidos pero tienen novedades (hoy, sólo MAME).
+  const extraKeys = (store) => (settingsOf(store).mameReleases && store.items[MAME_KEY]?.length ? [MAME_KEY] : []);
+
   // ── Consultas ─────────────────────────────────────────────────
   let running = null;
   // Todas las novedades (o las de un juego con only): una sola consulta a la vez. Los juegos silenciados no se
@@ -508,15 +697,29 @@ export function createNews({
         let pressCache = null;
         const press = async () => (pressCache ??= offline ? [] : await fetchPress(settings));
         if (!only && (await autoFollow(store, list, press))) store = await read();
-        const keys = Object.keys(store.follows).filter((key) => (only ? key === only : !isMuted(store.follows[key])));
-        if (!keys.length) return summary();
-        const byKey = new Map(list.map((game) => [game.key, game]));
         let added = 0;
+        // Fuentes que no respondieron en esta consulta (para avisarlo al terminar «Buscar de nuevo»).
+        let failed = 0;
+        if (!only && !offline && settings.mameReleases) added += await checkMame();
+        const keys = Object.keys(store.follows).filter((key) => (only ? key === only : !isMuted(store.follows[key])));
+        if (!keys.length) {
+          const result = { ...(await summary()), added, failed };
+          if (added) onChange(result);
+          return result;
+        }
+        // Idiomas del buscador abierto: los de los medios elegidos (si no hay ninguno, español).
+        const languages = [...new Set(PRESS_FEEDS.filter((feed) => settings.press[feed.id]).map((feed) => feed.lang))];
+        if (!languages.length) languages.push('es');
+        const byKey = new Map(list.map((game) => [game.key, game]));
         for (const key of keys) {
           const game = byKey.get(key) ?? { key, ...store.follows[key].game };
           let follow = store.follows[key];
           // Una vez por mes se vuelve a mirar Wikidata por canales nuevos (se respeta lo que destildaste).
-          if (!offline && now() - Date.parse(follow.discoveredAt ?? 0) > REDISCOVER_MS) {
+          if (
+            !offline &&
+            (follow.discoveryVersion !== DISCOVERY_VERSION ||
+              now() - Date.parse(follow.discoveredAt ?? 0) > REDISCOVER_MS)
+          ) {
             const found = await discover(game);
             const saved = new Map(follow.sources.map((source) => [source.id, source]));
             follow = {
@@ -526,25 +729,29 @@ export function createNews({
                 ...found.sources.map((source) => ({ ...source, ...(saved.get(source.id) ?? {}) })),
                 ...follow.sources.filter((source) => source.kind === 'feed')
               ],
-              discoveredAt: iso()
+              discoveredAt: iso(),
+              discoveryVersion: DISCOVERY_VERSION
             };
           }
           const at = iso();
           const mode = modeOf(follow);
           const { incoming, sources } = offline
             ? { incoming: [], sources: officialSources(follow) }
-            : await collect(game, follow, mode === 'official' ? [] : await press(), at);
+            : await collect(game, follow, mode === 'official' ? [] : await press(), at, { languages });
+          failed += sources.filter((source) => source.status === 'error' && source.checkedAt === at).length;
           await update(async (current) => {
             if (!current.follows[key]) return current;
             current.follows[key] = { ...current.follows[key], ...follow, mode, sources, checkedAt: at };
             const local = await localUpdate(current, game, at);
-            added += merge(current, key, [...incoming, ...local]);
+            // Un juego que todavía no tiene ninguna novedad recibe la primera tanda (las cinco más recientes), aunque
+            // sean de antes de seguirlo: pasa si al seguirlo una fuente no respondió.
+            added += merge(current, key, [...incoming, ...local], { initial: !current.items[key]?.length });
             return current;
           });
         }
         await update((current) => ({ ...current, refreshedAt: iso() }));
         if (added) log('info', 'novedades', `${added} novedades nuevas`);
-        const result = await summary();
+        const result = { ...(await summary()), added, failed };
         onChange(result);
         return result;
       } finally {
@@ -581,7 +788,7 @@ export function createNews({
   async function summary() {
     const store = await read();
     const unread = {};
-    for (const key of Object.keys(store.follows)) {
+    for (const key of [...Object.keys(store.follows), ...extraKeys(store)]) {
       const count = unreadOf(store, key);
       if (count) unread[key] = count;
     }
@@ -635,13 +842,18 @@ export function createNews({
       mutedUntil: isMuted(follow) ? follow.mutedUntil : null,
       unread: unreadOf(store, gameKey)
     }));
+    for (const extra of extraKeys(store))
+      follows.push({ key: extra, name: MAME_NAME, mode: 'official', mutedUntil: null, unread: unreadOf(store, extra) });
     let items = follows
       .filter((follow) => !follow.mutedUntil)
       .flatMap((follow) => {
         const since = store.read[follow.key] ?? '';
-        return visible(store, follow.key)
-          .filter((item) => item.date >= after)
-          .map((item) => ({ ...item, unread: item.foundAt > since, game: { key: follow.key, name: follow.name } }));
+        return (
+          visible(store, follow.key)
+            // Con un juego elegido se ve todo lo guardado; sin filtro, sólo los últimos 60 días.
+            .filter((item) => key === follow.key || item.date >= after)
+            .map((item) => ({ ...item, unread: item.foundAt > since, game: { key: follow.key, name: follow.name } }))
+        );
       })
       .sort((a, b) => b.date.localeCompare(a.date));
     const types = [...new Set(items.map((item) => item.type))];
@@ -660,7 +872,7 @@ export function createNews({
 
   async function markRead(key) {
     await update((store) => {
-      if (store.follows[key]) store.read[key] = iso();
+      if (store.follows[key] || key === MAME_KEY) store.read[key] = iso();
       return store;
     });
     onChange(await summary());
@@ -669,7 +881,7 @@ export function createNews({
 
   async function markAllRead() {
     await update((store) => {
-      for (const key of Object.keys(store.follows)) store.read[key] = iso();
+      for (const key of [...Object.keys(store.follows), ...extraKeys(store)]) store.read[key] = iso();
       return store;
     });
     onChange(await summary());
@@ -732,7 +944,8 @@ export function createNews({
         enabled: current.press[id]
       })),
       offers: current.offers,
-      autoFollow: current.autoFollow
+      autoFollow: current.autoFollow,
+      mameReleases: current.mameReleases
     };
   }
   async function saveSettings(patch) {
@@ -743,6 +956,7 @@ export function createNews({
           if (id in current.press && typeof enabled === 'boolean') current.press[id] = enabled;
       if (typeof patch.offers === 'boolean') current.offers = patch.offers;
       if (typeof patch.autoFollow === 'boolean') current.autoFollow = patch.autoFollow;
+      if (typeof patch.mameReleases === 'boolean') current.mameReleases = patch.mameReleases;
       store.settings = current;
       return store;
     });
@@ -761,7 +975,16 @@ export function createNews({
     let source;
     const steam = /store\.steampowered\.com\/(?:app|news\/app)\/(\d+)/.exec(url);
     const bluesky = /^\/profile\/([^/]+)\/?$/.exec(parsed.pathname);
+    const subreddit =
+      /(?:^|\.)reddit\.com$/.test(parsed.hostname) && /^\/r\/([A-Za-z0-9_]{2,21})/.exec(parsed.pathname);
     if (steam) source = { id: 'steam', kind: 'steam', appid: steam[1], label: SOURCE_LABELS.steam };
+    else if (subreddit)
+      source = {
+        id: 'reddit',
+        kind: 'reddit',
+        label: 'Reddit (r/' + subreddit[1] + ')',
+        url: `https://www.reddit.com/r/${subreddit[1]}/top/.rss?t=week`
+      };
     else if (parsed.hostname === 'bsky.app' && bluesky)
       source = {
         id: 'bluesky',
@@ -838,7 +1061,7 @@ export function createNews({
 }
 
 // Búsqueda nocturna (electron-main --scan): consulta las novedades sin abrir la ventana, con el inventario guardado.
-export async function nightlyNews(dataDir, log = () => {}) {
+export async function nightlyNews(dataDir, log = () => {}, options = {}) {
   const readJson = async (name, fallback) => {
     try {
       return JSON.parse(await fs.readFile(path.join(dataDir, name), 'utf8'));
@@ -847,6 +1070,7 @@ export async function nightlyNews(dataDir, log = () => {}) {
     }
   };
   const news = createNews({
+    ...options,
     dataDir,
     log,
     games: async () => {

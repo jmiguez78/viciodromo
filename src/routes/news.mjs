@@ -5,7 +5,7 @@ import { MODES, MUTE_DAYS } from '../news.mjs';
 
 const ITEM_ID = /^[\w:.-]{1,80}$/;
 const SOURCE_ID = /^[\w-]{1,40}$/;
-const TYPES = ['update', 'content', 'announcement', 'event', 'press', 'offer'];
+const TYPES = ['update', 'content', 'announcement', 'event', 'press', 'community', 'offer'];
 
 export function newsRoutes(router, d) {
   router.get('/api/news', () => d.news.summary());
@@ -18,14 +18,18 @@ export function newsRoutes(router, d) {
   router.post('/api/news/read-all', () => d.news.markAllRead());
   router.get('/api/news/settings', () => d.news.settings());
   router.put('/api/news/settings', async ({ body }) => {
-    const { press, offers, autoFollow } = await body();
+    const { press, offers, autoFollow, mameReleases } = await body();
     if (press !== undefined && (typeof press !== 'object' || press === null || Array.isArray(press)))
       throw badRequest('Los medios van como { id: true/false }.');
     return d.news.saveSettings({
       press,
       offers: offers === undefined ? undefined : check.boolean(offers, 'Indicá si se muestran las ofertas.'),
       autoFollow:
-        autoFollow === undefined ? undefined : check.boolean(autoFollow, 'Indicá si se siguen los juegos solos.')
+        autoFollow === undefined ? undefined : check.boolean(autoFollow, 'Indicá si se siguen los juegos solos.'),
+      mameReleases:
+        mameReleases === undefined
+          ? undefined
+          : check.boolean(mameReleases, 'Indicá si se avisan las versiones nuevas de MAME.')
     });
   });
   router.get('/api/news/game/:key', ({ params }) => d.news.forGame(params.key));
@@ -37,8 +41,8 @@ export function newsRoutes(router, d) {
   });
   router.delete('/api/news/game/:key/follow', ({ params }) => d.news.unfollow(params.key));
   router.post('/api/news/game/:key/refresh', async ({ params }) => {
-    await d.news.refresh({ only: params.key });
-    return d.news.forGame(params.key);
+    const { added = null, failed = 0 } = await d.news.refresh({ only: params.key });
+    return { ...(await d.news.forGame(params.key)), added, failed };
   });
   router.post('/api/news/game/:key/read', ({ params }) => d.news.markRead(params.key));
   router.put('/api/news/game/:key/mode', async ({ params, body }) => {

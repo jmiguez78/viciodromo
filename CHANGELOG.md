@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 0.43.0
+
+**Novedades, tercera parte: comunidad, buscador abierto, más tiendas y MAME.**
+
+- **Con «Todo»**, cada juego suma lo más votado de la semana en su **subreddit** (si Wikidata lo conoce; aparece en Fuentes oficiales y se puede destildar) y el **buscador abierto de noticias** (GDELT): notas de los últimos siete días en cualquier medio, en los idiomas de los medios que elegiste. Entran sólo las que nombran el juego en el título y, si el nombre es ambiguo, también al estudio. Las del subreddit llevan el tipo nuevo **Comunidad**.
+- **Versión instalada en Epic y Xbox.** Además de Steam, Viciódromo avisa cuando la app de Epic Games o la de Xbox instalan una versión nueva de un juego que seguís.
+- **Versiones nuevas de MAME.** Si tenés MAME configurado, la sección Novedades avisa cuando sale una versión más nueva que la tuya, con sus notas y el enlace a la descarga. Se apaga en **Configuración → Novedades**.
+
 ## 0.42.0
 
 **Novedades, segunda parte: todas juntas, en Inicio y a tu medida.**

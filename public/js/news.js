@@ -12,12 +12,13 @@ const TYPES = {
   announcement: 'Anuncio',
   event: 'Evento',
   press: 'Prensa',
+  community: 'Comunidad',
   offer: 'Oferta'
 };
 const MODES = [
   ['official', 'Solo oficial', 'Lo que publica el estudio: Steam, su sitio, Bluesky y YouTube.'],
   ['press', 'Oficial y prensa', 'Además, las notas de los medios elegidos que nombran el juego.'],
-  ['all', 'Todo', 'También las ofertas.']
+  ['all', 'Todo', 'También las ofertas, lo más votado del subreddit y el buscador abierto de noticias (GDELT).']
 ];
 const STATUS = {
   ok: '',
@@ -29,8 +30,9 @@ const KIND_HELP = {
   site: 'El blog o las noticias del sitio oficial.',
   bluesky: 'Lo que publica la cuenta del estudio.',
   youtube: 'Tráilers y videos del canal del estudio.',
+  reddit: 'Lo más votado de la semana en el subreddit. Entra con «Todo».',
   feed: 'Un feed que agregaste a mano.',
-  local: 'Avisa cuando Steam instala una versión nueva en esta PC.'
+  local: 'Avisa cuando la tienda instala una versión nueva en esta PC.'
 };
 
 let summary = { follows: new Set(), muted: new Set(), unread: {}, refreshedAt: null };
@@ -183,6 +185,49 @@ function refreshOpenTab(game) {
   else if (body) delete body.dataset.loaded;
 }
 
+// ── «Buscar de nuevo» ───────────────────────────────────────────────
+// Mientras dura la consulta el ícono gira y el botón dice «Buscando…» (como mínimo un instante, para que se note
+// aunque responda enseguida); al terminar, un aviso dice qué pasó y el botón vuelve a su estado.
+const MIN_BUSY_MS = 700;
+async function runRefresh(button, task) {
+  if (button.classList.contains('busy')) return null;
+  const label = button.querySelector('.label');
+  button.classList.add('busy');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  if (label) label.textContent = 'Buscando…';
+  const started = Date.now();
+  try {
+    const result = await task();
+    const wait = MIN_BUSY_MS - (Date.now() - started);
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    return result;
+  } finally {
+    button.classList.remove('busy');
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    if (label) label.textContent = 'Buscar de nuevo';
+  }
+}
+// «2 novedades nuevas.», «Sin novedades nuevas: ya tenés lo último.» y, si alguna fuente falló, cuántas.
+export function refreshMessage(result) {
+  const added = result?.added;
+  const failed = result?.failed ?? 0;
+  const text =
+    added == null
+      ? 'Búsqueda terminada.'
+      : added
+        ? plural(added, 'novedad nueva', 'novedades nuevas') + '.'
+        : 'Sin novedades nuevas: ya tenés lo último.';
+  return text + (failed ? ' ' + plural(failed, 'fuente no respondió', 'fuentes no respondieron') + '.' : '');
+}
+function refreshButton() {
+  const button = el('button', 'button');
+  button.type = 'button';
+  button.innerHTML = icon('refresh') + '<span class="label">Buscar de nuevo</span>';
+  return button;
+}
+
 // ── Tarjeta de una novedad (pestaña y sección) ───────────────────────
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -219,16 +264,18 @@ function itemCard(item, { withGame = false, onHide } = {}) {
   type.dataset.type = item.type;
   meta.append(type);
   if (item.unread) meta.append(el('span', 'news-new', 'Nueva'));
-  if (withGame && item.game) {
+  // El nombre del juego abre su página; MAME (que no es un juego) va como texto.
+  if (withGame && item.game && gameByKey(item.game.key)) {
     const game = el('button', 'text-button news-game', item.game.name);
     game.type = 'button';
     game.setAttribute('aria-label', 'Abrir la página de ' + item.game.name);
     game.onclick = () => window.GML?.openGamePage?.(gameByKey(item.game.key));
     meta.append(game);
-  }
+  } else if (withGame && item.game) meta.append(el('strong', 'news-game', item.game.name));
   meta.append(el('span', '', item.sourceLabel + ' · ' + dateText(item.date)));
   const title = el('h4', 'news-title');
-  title.append(externalLink(item.title, item.url));
+  // Las novedades locales de Epic y Xbox no tienen nota que abrir.
+  title.append(item.url ? externalLink(item.title, item.url) : document.createTextNode(item.title));
   content.append(meta, title);
   if (item.text && item.text !== item.title) content.append(el('p', 'news-excerpt', item.text));
   const actions = el('div', 'news-actions');
@@ -331,7 +378,7 @@ function sourcesPanel(data, game, body) {
   const field = el(
     'label',
     'news-add-label',
-    'Agregar una fuente: el blog del juego, su canal de YouTube, un perfil de Bluesky o la ficha de Steam'
+    'Agregar una fuente: el blog del juego, su canal de YouTube, un perfil de Bluesky, su subreddit o la ficha de Steam'
   );
   const input = document.createElement('input');
   input.type = 'url';
@@ -399,19 +446,16 @@ function render(body, game, data, { sourcesOpen = false } = {}) {
         : '')
   );
   status.setAttribute('role', 'status');
-  const again = el('button', 'button');
-  again.type = 'button';
-  again.innerHTML = icon('refresh') + ' Buscar de nuevo';
+  const again = refreshButton();
   again.onclick = async () => {
-    again.disabled = true;
-    again.classList.add('busy');
     try {
-      render(body, game, await request(gameUrl(game.key) + '/refresh', { method: 'POST' }));
+      const next = await runRefresh(again, () => request(gameUrl(game.key) + '/refresh', { method: 'POST' }));
+      if (!next) return;
+      render(body, game, next);
       loadSummary();
+      notify(refreshMessage(next), { type: next.failed ? 'info' : 'success' });
     } catch (error) {
-      again.disabled = false;
-      again.classList.remove('busy');
-      notifyError(error);
+      notifyError(error, () => again.click());
     }
   };
   toolbar.append(status, again);
@@ -606,7 +650,14 @@ export async function renderNewsShelf(host, visible = true) {
   host.querySelector('[data-news-all]').onclick = () => window.GML?.showPage?.('news');
   const track = host.querySelector('.news-track');
   for (const item of recent.items) {
-    const card = externalLink('', item.url, 'news-card' + (item.unread ? ' unread' : ''));
+    const target = gameByKey(item.game.key);
+    let card;
+    if (item.url) card = externalLink('', item.url, 'news-card' + (item.unread ? ' unread' : ''));
+    else {
+      card = el('button', 'news-card' + (item.unread ? ' unread' : ''));
+      card.type = 'button';
+      card.onclick = () => target && window.GML?.openGamePage?.(target);
+    }
     card.setAttribute('aria-label', item.game.name + ': ' + item.title + ' (' + item.sourceLabel + ')');
     const art = el('span', 'news-card-art');
     if (item.image) {
@@ -676,7 +727,8 @@ export async function loadNewsSettings() {
   }
   for (const [key, text] of [
     ['offers', 'Mostrar ofertas y descuentos'],
-    ['autoFollow', 'Seguir solos los juegos que abrís (los del último mes)']
+    ['autoFollow', 'Seguir solos los juegos que abrís (los del último mes)'],
+    ['mameReleases', 'Avisar cuando sale una versión nueva de MAME']
   ]) {
     const label = el('label', 'switch');
     const box = document.createElement('input');
@@ -716,17 +768,15 @@ export function setup() {
   });
   page?.querySelector('#news-refresh')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
-    button.disabled = true;
-    button.classList.add('busy');
     try {
-      applySummary(await request('/api/news/refresh', { method: 'POST' }));
+      const result = await runRefresh(button, () => request('/api/news/refresh', { method: 'POST' }));
+      if (!result) return;
+      applySummary(result);
       forgetShelf();
       await loadInbox();
+      notify(refreshMessage(result), { type: result.failed ? 'info' : 'success' });
     } catch (error) {
-      notifyError(error);
-    } finally {
-      button.disabled = false;
-      button.classList.remove('busy');
+      notifyError(error, () => button.click());
     }
   });
   // Los cambios del propio punto no cuentan (si no, se pintaría sin fin).

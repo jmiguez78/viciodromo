@@ -412,6 +412,12 @@ test('guía fase 2: importar archivo, lectura por tramos, antispoiler y filtro C
   await expect(panel.locator('.guide-toc-item')).toHaveCount(3);
   await expect(panel.locator('.guide-attribution')).toContainText('guia-ambar.txt');
 
+  // La primera vez abre en Pistas; pasamos a Solución confirmando para probar el lector completo.
+  await expect(panel.locator('[data-guide-mode=hints]')).toHaveAttribute('aria-pressed', 'true');
+  await panel.locator('[data-guide-mode=solution]').click();
+  await panel.locator('.guide-confirm-inline button', { hasText: 'Ver solución completa' }).click();
+  await expect(panel.locator('[data-guide-mode=solution]')).toHaveAttribute('aria-pressed', 'true');
+
   // Búsqueda dentro de la guía.
   await panel.locator('.guide-search-row input[type=search]').fill('palanca');
   await expect(panel.locator('.guide-search-row')).toContainText('1 coincidencia');
@@ -442,11 +448,64 @@ test('guía fase 2: importar archivo, lectura por tramos, antispoiler y filtro C
   await page.click('#guides-only');
   await page.click('#toggle-filters');
 
-  // Limpiar guía importada y marca de tramo para dejar el fixture intacto.
+  // Limpiar guía importada, volver a Pistas y quitar marca de tramo para dejar el fixture intacto.
   await openGame(page, 'steam:900000');
   await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  await panel.locator('[data-guide-mode=hints]').click();
+  await expect(panel.locator('[data-guide-mode=hints]')).toHaveAttribute('aria-pressed', 'true');
   await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
   await expect(panel.locator('.guide-reader')).toHaveCount(0);
   await panel.locator('.guide-section-form button', { hasText: 'Limpiar' }).click();
   await expect(panel.locator('.guide-section-form input')).toHaveValue('');
+});
+
+test('guía fase 3: modo Pistas por defecto, revelado paso a paso, editor manual e IA opcional', async ({ page }) => {
+  await openApp(page);
+  await openGame(page, 'steam:900006');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+
+  await panel.locator('.guide-offline-card input[type=file]').setInputFiles({
+    name: 'pistas-juego.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Sala del reloj\n==============\nGirá la aguja mayor hacia las doce y abrí el cofre.', 'utf8')
+  });
+
+  // Agregar pregunta manual con dos pistas y respuesta.
+  await expect(panel.locator('[data-guide-mode=hints]')).toHaveAttribute('aria-pressed', 'true');
+  await panel.locator('.guide-hints-toolbar button', { hasText: 'Agregar pregunta' }).click();
+  const qForm = panel.locator('.guide-question-form');
+  await qForm.locator('input').nth(0).fill('¿Cómo abro el cofre del reloj?');
+  await qForm.locator('input').nth(1).fill('Mirá las agujas del reloj.');
+  await qForm.locator('input').nth(2).fill('Poné la aguja mayor arriba de todo.');
+  await qForm.locator('textarea').fill('Girá la aguja mayor hacia las doce y abrí el cofre.');
+  await qForm.locator('button[type=submit]').click();
+
+  const card = panel.locator('.guide-question-card').first();
+  await expect(card).toContainText('¿Cómo abro el cofre del reloj?');
+  await expect(card).toContainText('Manual');
+
+  // Revelar pista 1 y pista 2, y comprobar persistencia al recargar.
+  await card.locator('button', { hasText: 'Ver pista 1' }).click();
+  await expect(card.locator('.guide-hint-list li')).toHaveCount(1);
+  await card.locator('button', { hasText: 'Otra pista' }).click();
+  await expect(card.locator('.guide-hint-list li')).toHaveCount(2);
+  await card.locator('button', { hasText: 'Ver la respuesta' }).click();
+  await card.locator('.guide-confirm-inline button', { hasText: 'Mostrar respuesta' }).click();
+  await expect(card.locator('.guide-answer-box')).toContainText('doce');
+
+  await openApp(page);
+  await openGame(page, 'steam:900006');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  await expect(panel.locator('.guide-question-card .guide-answer-box')).toContainText('doce');
+
+  // Editar pregunta manual.
+  await panel.locator('.guide-question-card button', { hasText: 'Editar' }).click();
+  await panel.locator('.guide-question-form input').nth(0).fill('¿Qué hago con el reloj?');
+  await panel.locator('.guide-question-form button[type=submit]').click();
+  await expect(panel.locator('.guide-question-card')).toContainText('¿Qué hago con el reloj?');
+
+  // Limpiar guía importada para dejar el fixture intacto.
+  await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
+  await expect(panel.locator('.guide-reader')).toHaveCount(0);
 });

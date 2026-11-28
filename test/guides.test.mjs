@@ -15,6 +15,15 @@ import {
 import { htmlToMarkdown, splitHtmlIntoSections, stripUnsafe } from '../src/guide-sanitize.mjs';
 import { detectMarkdownSections, detectTxtSections, importGuideFile } from '../src/guide-import.mjs';
 import { applyAntiSpoiler, cleanCaptureIds, companionDisplay, createGuides, nightlyGuides } from '../src/guides.mjs';
+import { createAiClient } from '../src/ai.mjs';
+import {
+  askAboutGuide,
+  cleanQuestion,
+  estimateHintsCost,
+  generateSectionHints,
+  selectRelevantContext,
+  translateSection
+} from '../src/guide-hints.mjs';
 import { describeDisplays } from '../src/displays.mjs';
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-guides-test-'));
@@ -511,5 +520,194 @@ test('applyAntiSpoiler oculta tramos futuros y la API de Fase 2 importa, edita, 
     assert.equal(night.found, 1);
   } finally {
     await fs.rm(nightDir, { recursive: true, force: true });
+  }
+});
+
+test('ai.mjs valida clave, lee fallback de news.json y llama a Anthropic estructurado', async () => {
+  const aiDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-ai-test-'));
+  try {
+    await fs.writeFile(
+      path.join(aiDir, 'news.json'),
+      JSON.stringify({ schemaVersion: 1, settings: { aiKey: 'cifrado-news' } })
+    );
+    const ai = createAiClient({
+      dataDir: aiDir,
+      protect: async (raw) => 'enc:' + raw,
+      unprotect: async (blob) => blob.replace(/^enc:/, ''),
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ content: [{ type: 'text', text: '{"ok":true,"valor":42}' }] }))
+    });
+    assert.deepEqual(await ai.status(), { configured: true, source: 'news', model: 'claude-haiku-5-5' });
+    await assert.rejects(() => ai.setKey('invalida'), /sk-ant-/);
+    const saved = await ai.setKey('sk-ant-api03-12345678901234567890');
+    assert.equal(saved.source, 'guides');
+    const jsonOut = await ai.askJson({ prompt: 'Hola' });
+    assert.equal(jsonOut.valor, 42);
+    await ai.setKey(null);
+    assert.equal((await ai.status()).source, 'news');
+  } finally {
+    await fs.rm(aiDir, { recursive: true, force: true });
+  }
+});
+
+test('guide-hints: estimación, selección sin tramos bloqueados, pistear, preguntar y traducir', async () => {
+  const q = cleanQuestion({
+    title: '¿Puerta?',
+    hints: ['Mirá atrás', 'Llave roja'],
+    answerQuote: 'Usá la llave roja.'
+  });
+  assert.equal(q.origin, 'manual');
+  const est = estimateHintsCost([{ solution: 'a'.repeat(400) }, { solution: '' }]);
+  assert.equal(est.sections, 1);
+  assert.ok(est.estimatedUsd > 0);
+
+  const ctx = selectRelevantContext(
+    [
+      { id: 's01', title: 'Inicio', solution: 'La palanca está en el sótano.', locked: false },
+      { id: 's02', title: 'Final secreto', solution: 'Palanca dorada del jefe.', locked: true }
+    ],
+    { sectionId: 's01', question: 'palanca' }
+  );
+  assert.equal(ctx.length, 1);
+  assert.equal(ctx[0].id, 's01');
+
+  const fakeAi = {
+    askJson: async ({ prompt }) => {
+      if (prompt.includes('Universal Hint System')) {
+        return {
+          questions: [
+            {
+              title: '¿Cómo abro la compuerta?',
+              hints: ['Mirá al costado', 'Hay una palanca', 'Tirala hacia abajo'],
+              answerQuote: 'Tirá la palanca del sótano.'
+            }
+          ]
+        };
+      }
+      if (prompt.includes('Pregunta del jugador:')) {
+        return {
+          covered: true,
+          hint: 'Revisá el sótano.',
+          answer: 'Tirá la palanca del sótano.',
+          quote: 'La palanca está en el sótano.',
+          sectionId: 's01'
+        };
+      }
+      return { title: 'El sótano', solution: 'La palanca está acá.' };
+    }
+  };
+
+  const generated = await generateSectionHints({
+    ai: fakeAi,
+    gameName: 'Ámbar',
+    section: { id: 's01', title: 'Basement', solution: 'The lever is in the basement.' }
+  });
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0].origin, 'ai');
+  assert.equal(generated[0].hints.length, 3);
+
+  const askHintOnly = await askAboutGuide({
+    ai: fakeAi,
+    gameName: 'Ámbar',
+    sections: [{ id: 's01', title: 'Sótano', solution: 'La palanca está en el sótano.', locked: false }],
+    sectionId: 's01',
+    question: '¿Qué hago con la palanca?',
+    revealAnswer: false
+  });
+  assert.equal(askHintOnly.covered, true);
+  assert.equal(askHintOnly.answer, null);
+  assert.equal(askHintOnly.hasAnswer, true);
+
+  const translated = await translateSection({
+    ai: fakeAi,
+    gameName: 'Ámbar',
+    section: { id: 's01', title: 'Basement', solution: 'The lever is here.' }
+  });
+  assert.equal(translated.title, 'El sótano');
+});
+
+test('API Fase 3: editor manual de preguntas, revelado progresivo, IA simulada y rechazo sin clave', async () => {
+  const aiDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-guides-p3-'));
+  const aiClient = createAiClient({
+    dataDir: aiDir,
+    protect: async (raw) => 'enc:' + raw,
+    unprotect: async (blob) => blob.replace(/^enc:/, ''),
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      const prompt = body.messages[0].content;
+      if (prompt.includes('Universal Hint System')) {
+        return new Response(
+          JSON.stringify({
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  questions: [
+                    {
+                      title: '¿Cómo cruzo?',
+                      hints: ['Mirá el puente', 'Cortá la soga'],
+                      answerQuote: 'Cortá la soga derecha.'
+                    }
+                  ]
+                })
+              }
+            ]
+          })
+        );
+      }
+      if (prompt.includes('Traducí')) {
+        return new Response(
+          JSON.stringify({
+            content: [{ type: 'text', text: JSON.stringify({ title: 'Puente', solution: 'Cortá la soga derecha.' }) }]
+          })
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: JSON.stringify({ covered: false }) }]
+        })
+      );
+    }
+  });
+  const guidesSvc = createGuides({ dataDir: aiDir, ai: aiClient });
+  const game = { key: 'steam:613830', id: '613830', name: 'Chrono Trigger', platform: 'Steam' };
+  try {
+    const imported = await guidesSvc.importFile(game, {
+      filename: 'ct.txt',
+      content: 'Bridge\n======\nCut the right rope to cross.'
+    });
+    const gid = imported.activeGuide.id;
+
+    // Sin clave, generar pistas falla con 409
+    await assert.rejects(() => guidesSvc.generateHints(game, gid, 's01'), /Cargá tu clave/);
+
+    // Agregar pregunta manual y revelar pistas paso a paso
+    const manualQ = await guidesSvc.addQuestion(game.key, gid, 's01', {
+      title: '¿Qué soga corto?',
+      hints: ['No es la izquierda', 'Probá la derecha'],
+      answerQuote: 'Cut the right rope.'
+    });
+    await guidesSvc.updateProgress(game.key, { setHintCount: { sectionId: 's01', questionId: manualQ.id, count: 1 } });
+    const view1 = await guidesSvc.forGame(game);
+    assert.equal(view1.activeGuide.sections[0].questions[0].visibleHints.length, 1);
+    assert.equal(view1.activeGuide.sections[0].questions[0].answerQuote, '');
+
+    await guidesSvc.updateProgress(game.key, { revealAnswer: { sectionId: 's01', questionId: manualQ.id } });
+    const view2 = await guidesSvc.forGame(game);
+    assert.equal(view2.activeGuide.sections[0].questions[0].answerQuote, 'Cut the right rope.');
+
+    // Cargar clave, pistear con IA (conserva la manual) y traducir con caché
+    await aiClient.setKey('sk-ant-api03-12345678901234567890');
+    await guidesSvc.generateHints(game, gid, 's01');
+    const view3 = await guidesSvc.forGame(game);
+    assert.equal(view3.activeGuide.sections[0].questions.length, 2);
+    assert.equal(view3.activeGuide.sections[0].questions[1].origin, 'ai');
+
+    const tr = await guidesSvc.translateGuideSection(game, gid, 's01');
+    assert.equal(tr.title, 'Puente');
+    const askMiss = await guidesSvc.askGuide(game, gid, { sectionId: 's01', question: '¿Jefe final?' });
+    assert.equal(askMiss.covered, false);
+  } finally {
+    await fs.rm(aiDir, { recursive: true, force: true });
   }
 });

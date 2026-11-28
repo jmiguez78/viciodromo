@@ -137,6 +137,19 @@ for (const theme of ['dark', 'light']) {
                       order: 1,
                       displayTitle: 'Capítulo 4',
                       solution: 'Buscá la **llave** en el cofre.',
+                      questions: [
+                        {
+                          id: 'q1',
+                          title: '¿Cómo abro el cofre?',
+                          origin: 'ai',
+                          edited: false,
+                          totalHints: 2,
+                          revealedCount: 1,
+                          visibleHints: ['Mirá detrás de la columna.'],
+                          answerRevealed: false,
+                          answerQuote: ''
+                        }
+                      ],
                       isFuture: false,
                       locked: false
                     },
@@ -145,11 +158,14 @@ for (const theme of ['dark', 'light']) {
                       order: 2,
                       displayTitle: 'Tramo 2',
                       solution: '',
+                      questions: [],
                       isFuture: true,
                       locked: true
                     }
                   ]
                 },
+                ai: { configured: true, source: 'guides', model: 'claude-haiku-5-5' },
+                hintsEstimate: { sections: 2, inputTokens: 400, outputTokens: 900, estimatedUsd: 0.0039 },
                 notes: [
                   {
                     id: 'n-test',

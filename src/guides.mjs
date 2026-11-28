@@ -1,12 +1,12 @@
-// Guías de pistas y soluciones (Fases 1 y 2): almacenamiento separado de progreso («Acá estoy», nivel, último
-// enlace abierto, tramos revelados y notas con capturas) e índice/ítems de guías sin conexión (StrategyWiki y
-// archivos propios), más disponibilidad en búsqueda nocturna y selección de monitor acompañante.
+// Guías de pistas y soluciones (Fases 1 a 3): almacenamiento separado de progreso («Acá estoy», nivel,
+// último enlace abierto, pistas reveladas, tramos revelados y notas con capturas), índice/ítems de guías
+// sin conexión (StrategyWiki y archivos propios), disponibilidad nocturna y pistas escalonadas / IA opcional.
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { findDisplay } from './displays.mjs';
 import { createVersionedFile, readJsonCached } from './json-file.mjs';
-import { badRequest, notFound } from './http.mjs';
+import { badRequest, conflict, notFound } from './http.mjs';
 import { guideLinksFor, safeGuideUrl } from './guide-sources/links.mjs';
 import {
   checkStrategyWikiBatch,
@@ -14,6 +14,13 @@ import {
   searchStrategyWiki
 } from './guide-sources/strategywiki.mjs';
 import { importGuideFile } from './guide-import.mjs';
+import {
+  askAboutGuide,
+  cleanQuestion,
+  estimateHintsCost,
+  generateSectionHints,
+  translateSection
+} from './guide-hints.mjs';
 
 export const GUIDE_MODES = ['hints', 'solution'];
 const MAX_SECTION_LENGTH = 120;
@@ -31,6 +38,7 @@ const emptyIndexStore = () => ({ guides: {}, availability: {} });
 
 const cleanSection = (value) => (typeof value === 'string' ? value.trim().slice(0, MAX_SECTION_LENGTH) : '');
 const cleanNoteText = (value) => (typeof value === 'string' ? value.trim().slice(0, MAX_NOTE_LENGTH) : '');
+const hintKey = (sectionId, questionId) => `${sectionId}/${questionId}`;
 
 export function cleanCaptureIds(value) {
   if (!Array.isArray(value)) return [];
@@ -52,6 +60,28 @@ export function companionDisplay(displays, gameDisplay = null) {
   return displays.find((item) => item.id !== gameTarget?.id) ?? null;
 }
 
+function projectQuestions(questions = [], sectionId, progress = {}) {
+  const revealedHints = progress.revealedHints ?? {};
+  const revealedAnswers = new Set(Array.isArray(progress.revealedAnswers) ? progress.revealedAnswers : []);
+  return (Array.isArray(questions) ? questions : []).map((q) => {
+    const qKey = hintKey(sectionId, q.id);
+    const allHints = Array.isArray(q.hints) ? q.hints : [];
+    const count = Math.min(allHints.length, Math.max(0, Number(revealedHints[qKey]) || 0));
+    const answerRevealed = revealedAnswers.has(qKey);
+    return {
+      id: q.id,
+      title: q.title,
+      origin: q.origin || 'manual',
+      edited: q.edited === true,
+      totalHints: allHints.length,
+      revealedCount: count,
+      visibleHints: allHints.slice(0, count),
+      answerRevealed,
+      answerQuote: answerRevealed ? (q.answerQuote ?? '') : ''
+    };
+  });
+}
+
 // Antispoiler por tramo: lo que viene después del tramo actual («Acá estoy») queda oculto salvo que se revele.
 export function applyAntiSpoiler(sections = [], progress = {}) {
   const currentIndex = progress.currentSectionId
@@ -70,6 +100,8 @@ export function applyAntiSpoiler(sections = [], progress = {}) {
       displayTitle: showTitle ? section.title : `Tramo ${order}`,
       realTitle: showTitle ? section.title : null,
       solution: unlocked ? section.solution : '',
+      translation: unlocked && section.translation ? section.translation : null,
+      questions: unlocked ? projectQuestions(section.questions, section.id, progress) : [],
       isFuture,
       locked: !unlocked
     };
@@ -93,6 +125,15 @@ function normalizeEntry(entry) {
         -MAX_REVEALED_SECTIONS
       )
     : [];
+  const revealedHints = {};
+  if (entry?.revealedHints && typeof entry.revealedHints === 'object' && !Array.isArray(entry.revealedHints)) {
+    for (const [k, v] of Object.entries(entry.revealedHints)) {
+      if (typeof k === 'string' && Number.isInteger(v) && v > 0 && v <= 10) revealedHints[k] = v;
+    }
+  }
+  const revealedAnswers = Array.isArray(entry?.revealedAnswers)
+    ? [...new Set(entry.revealedAnswers.filter((id) => typeof id === 'string' && id.trim()))].slice(-1000)
+    : [];
   const notes = Array.isArray(entry?.notes)
     ? entry.notes
         .filter((note) => note && typeof note === 'object' && typeof note.id === 'string')
@@ -114,6 +155,8 @@ function normalizeEntry(entry) {
     showFutureTitles: entry?.showFutureTitles === true,
     skipSpoilerConfirm: entry?.skipSpoilerConfirm === true,
     revealedSections,
+    revealedHints,
+    revealedAnswers,
     updatedAt: typeof entry?.updatedAt === 'string' ? entry.updatedAt : null,
     notes
   };
@@ -123,6 +166,7 @@ export function createGuides({
   dataDir,
   offline = false,
   fetchImpl = globalThis.fetch,
+  ai = null,
   log = () => {},
   now = () => Date.now(),
   onChange = () => {}
@@ -259,12 +303,20 @@ export function createGuides({
       showFutureTitles: entry.showFutureTitles,
       skipSpoilerConfirm: entry.skipSpoilerConfirm,
       revealedSections: entry.revealedSections,
+      revealedHints: entry.revealedHints,
+      revealedAnswers: entry.revealedAnswers,
       updatedAt: entry.updatedAt
     };
   }
 
   async function forGame(game, { viewerSupported = false, companion = null } = {}) {
-    const [progStore, idx] = await Promise.all([readProgress(), readIndex()]);
+    const [progStore, idx, aiStatus] = await Promise.all([
+      readProgress(),
+      readIndex(),
+      ai
+        ? ai.status().catch(() => ({ configured: false, source: null }))
+        : Promise.resolve({ configured: false, source: null })
+    ]);
     const entry = normalizeEntry(progStore.games[game.key]);
     const guides = Object.values(idx.guides)
       .filter((item) => item.gameKey === game.key)
@@ -273,9 +325,11 @@ export function createGuides({
       (entry.activeGuideId && guides.some((g) => g.id === entry.activeGuideId) ? entry.activeGuideId : guides[0]?.id) ??
       null;
     let activeGuide = null;
+    let hintsEstimate = null;
     if (activeId) {
       const item = await readItem(activeId).catch(() => null);
       if (item && Array.isArray(item.sections)) {
+        hintsEstimate = estimateHintsCost(item.sections);
         activeGuide = {
           id: item.id,
           gameKey: item.gameKey,
@@ -294,6 +348,8 @@ export function createGuides({
       notes: entry.notes,
       guides,
       activeGuide,
+      hintsEstimate,
+      ai: aiStatus,
       availability: idx.availability[game.key]?.strategywiki ?? null,
       viewerSupported: Boolean(viewerSupported),
       companionDisplay: companion
@@ -363,6 +419,37 @@ export function createGuides({
       }
       if (patch.resetRevealed === true) {
         current.revealedSections = [];
+      }
+      if (patch.setHintCount && typeof patch.setHintCount === 'object') {
+        const { sectionId, questionId, count } = patch.setHintCount;
+        if (
+          typeof sectionId !== 'string' ||
+          typeof questionId !== 'string' ||
+          !Number.isInteger(count) ||
+          count < 0 ||
+          count > 10
+        ) {
+          throw badRequest('Datos de pista no válidos.');
+        }
+        const k = hintKey(sectionId.trim(), questionId.trim());
+        if (count === 0) delete current.revealedHints[k];
+        else current.revealedHints[k] = count;
+      }
+      if (patch.revealAnswer && typeof patch.revealAnswer === 'object') {
+        const { sectionId, questionId } = patch.revealAnswer;
+        if (typeof sectionId !== 'string' || typeof questionId !== 'string') {
+          throw badRequest('Datos de respuesta no válidos.');
+        }
+        const k = hintKey(sectionId.trim(), questionId.trim());
+        current.revealedAnswers = [...new Set([...current.revealedAnswers, k])].slice(-1000);
+      }
+      if (patch.hideQuestion && typeof patch.hideQuestion === 'object') {
+        const { sectionId, questionId } = patch.hideQuestion;
+        if (typeof sectionId === 'string' && typeof questionId === 'string') {
+          const k = hintKey(sectionId.trim(), questionId.trim());
+          delete current.revealedHints[k];
+          current.revealedAnswers = current.revealedAnswers.filter((item) => item !== k);
+        }
       }
       current.updatedAt = iso();
       store.games[key] = current;
@@ -494,19 +581,25 @@ export function createGuides({
     onChange(await summary());
   }
 
-  async function editSection(gameKey, guideId, sectionId, { title, mergeWithPrevious = false } = {}) {
+  async function loadSectionContext(gameKey, guideId, sectionId) {
     const item = await readItem(guideId).catch(() => null);
     if (!item || item.gameKey !== gameKey) throw notFound('No se encontró esa guía.');
     const sections = Array.isArray(item.sections) ? [...item.sections] : [];
     const index = sections.findIndex((s) => s.id === sectionId);
     if (index < 0) throw notFound('No se encontró ese tramo.');
+    return { item, sections, index, section: sections[index] };
+  }
+
+  async function editSection(gameKey, guideId, sectionId, { title, mergeWithPrevious = false } = {}) {
+    const { item, sections, index } = await loadSectionContext(gameKey, guideId, sectionId);
     if (mergeWithPrevious) {
       if (index === 0) throw badRequest('El primer tramo no tiene uno anterior para unir.');
       const prev = sections[index - 1];
       const cur = sections[index];
       sections[index - 1] = {
         ...prev,
-        solution: [prev.solution, `### ${cur.title}\n\n${cur.solution}`].filter(Boolean).join('\n\n')
+        solution: [prev.solution, `### ${cur.title}\n\n${cur.solution}`].filter(Boolean).join('\n\n'),
+        questions: [...(prev.questions ?? []), ...(cur.questions ?? [])]
       };
       sections.splice(index, 1);
     } else if (typeof title === 'string') {
@@ -533,6 +626,90 @@ export function createGuides({
       });
     }
     return reordered;
+  }
+
+  // ── Fase 3: Preguntas y pistas escalonadas (editor manual + IA opcional) ──
+  async function getQuestion(gameKey, guideId, sectionId, questionId) {
+    const { section } = await loadSectionContext(gameKey, guideId, sectionId);
+    const found = (section.questions ?? []).find((q) => q.id === questionId);
+    if (!found) throw notFound('No se encontró esa pregunta.');
+    return found;
+  }
+
+  async function addQuestion(gameKey, guideId, sectionId, payload) {
+    const { item, sections, index, section } = await loadSectionContext(gameKey, guideId, sectionId);
+    const question = cleanQuestion(payload, { origin: 'manual' });
+    sections[index] = { ...section, questions: [...(section.questions ?? []), question] };
+    await writeItem({ ...item, sections });
+    return question;
+  }
+
+  async function updateQuestion(gameKey, guideId, sectionId, questionId, payload) {
+    const { item, sections, index, section } = await loadSectionContext(gameKey, guideId, sectionId);
+    const list = [...(section.questions ?? [])];
+    const qIndex = list.findIndex((q) => q.id === questionId);
+    if (qIndex < 0) throw notFound('No se encontró esa pregunta.');
+    const existing = list[qIndex];
+    const next = cleanQuestion(
+      {
+        ...existing,
+        ...payload,
+        id: existing.id,
+        edited: existing.origin === 'ai' ? true : existing.edited === true
+      },
+      { origin: existing.origin || 'manual' }
+    );
+    list[qIndex] = next;
+    sections[index] = { ...section, questions: list };
+    await writeItem({ ...item, sections });
+    return next;
+  }
+
+  async function deleteQuestion(gameKey, guideId, sectionId, questionId) {
+    const { item, sections, index, section } = await loadSectionContext(gameKey, guideId, sectionId);
+    const list = section.questions ?? [];
+    const filtered = list.filter((q) => q.id !== questionId);
+    if (filtered.length === list.length) throw notFound('No se encontró esa pregunta.');
+    sections[index] = { ...section, questions: filtered };
+    await writeItem({ ...item, sections });
+    await updateProgressStore((store) => {
+      const current = normalizeEntry(store.games[gameKey]);
+      const k = hintKey(sectionId, questionId);
+      delete current.revealedHints[k];
+      current.revealedAnswers = current.revealedAnswers.filter((entry) => entry !== k);
+      store.games[gameKey] = current;
+      return store;
+    });
+  }
+
+  async function generateHints(game, guideId, sectionId) {
+    if (!ai) throw conflict('La IA no está disponible.');
+    const { item, sections, index, section } = await loadSectionContext(game.key, guideId, sectionId);
+    const generated = await generateSectionHints({ ai, gameName: game.name, section });
+    const keptManual = (section.questions ?? []).filter((q) => q.origin !== 'ai');
+    sections[index] = { ...section, questions: [...keptManual, ...generated] };
+    await writeItem({ ...item, sections });
+    log('info', 'guias', `Pistas armadas con IA para ${game.key} · ${section.title} (${generated.length})`);
+    return generated;
+  }
+
+  async function askGuide(game, guideId, { sectionId = null, question = '', revealAnswer = false }) {
+    if (!ai) throw conflict('La IA no está disponible.');
+    const item = await readItem(guideId).catch(() => null);
+    if (!item || item.gameKey !== game.key) throw notFound('No se encontró esa guía.');
+    const entry = normalizeEntry((await readProgress()).games[game.key]);
+    const visibleSections = applyAntiSpoiler(item.sections ?? [], entry);
+    return askAboutGuide({ ai, gameName: game.name, sections: visibleSections, sectionId, question, revealAnswer });
+  }
+
+  async function translateGuideSection(game, guideId, sectionId) {
+    if (!ai) throw conflict('La IA no está disponible.');
+    const { item, sections, index, section } = await loadSectionContext(game.key, guideId, sectionId);
+    if (section.translation) return section.translation;
+    const translation = await translateSection({ ai, gameName: game.name, section });
+    sections[index] = { ...section, translation };
+    await writeItem({ ...item, sections });
+    return translation;
   }
 
   async function checkAvailability(
@@ -586,6 +763,13 @@ export function createGuides({
     importFile,
     deleteGuide,
     editSection,
+    getQuestion,
+    addQuestion,
+    updateQuestion,
+    deleteQuestion,
+    generateHints,
+    askGuide,
+    translateGuideSection,
     checkAvailability
   };
 }

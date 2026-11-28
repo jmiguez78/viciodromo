@@ -42,6 +42,7 @@ import { screenshotRoutes } from './routes/screenshots.mjs';
 import { newsRoutes } from './routes/news.mjs';
 import { guidesRoutes } from './routes/guides.mjs';
 import { createNews } from './news.mjs';
+import { createAiClient } from './ai.mjs';
 import { companionDisplay, createGuides } from './guides.mjs';
 import { createUpdates } from './updates.mjs';
 import { noAutoUpdate } from './auto-update.mjs';
@@ -378,9 +379,11 @@ const news = createNews({
   mameVersion: async () => (await arcade.info()).version,
   onChange: (summary) => tasks.emit('news', summary)
 });
+const ai = createAiClient({ dataDir, offline });
 const guides = createGuides({
   dataDir,
   offline,
+  ai,
   log,
   onChange: (summary) => tasks.emit('guides', summary)
 });
@@ -797,6 +800,7 @@ async function diagnostics() {
     });
   }
   for (const [label, targetPath] of [
+    ['ai.json', ai.filePath],
     ['guides/progress.json', guides.filePath],
     ['guides/index.json', guides.indexPath]
   ]) {
@@ -1050,6 +1054,7 @@ export function createServer({
     gameArt,
     screenshots,
     news,
+    ai,
     guides,
     guideViewerSupported: Boolean(openGuideWindow),
     async companionDisplayFor(game, once = null) {

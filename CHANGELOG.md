@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 0.47.0
+
+**Guías de pistas y soluciones, tercera parte: pistas escalonadas e IA opcional.**
+
+- **Modo Pistas por defecto.** Al abrir una guía sin conexión por primera vez se muestra el nivel **Pistas**; cambiar a **Solución** pide una confirmación breve (con opción de no volver a preguntar en ese juego) y recuerda tu elección.
+- **Pistas graduales.** Cada pregunta revela sus pistas de a una (**Ver pista 1**, **Otra pista**) y guarda cuántas viste. Al final, **Ver la respuesta** muestra el fragmento citado de la solución.
+- **Editor manual.** Podés agregar, editar o corregir preguntas, pistas y respuestas en cualquier tramo sin usar IA.
+- **IA opcional (con tu clave de Anthropic).** Si cargaste tu clave (reutiliza la de Novedades si ya existe, o podés cargar una en Guía): **Armar pistas con IA** convierte un tramo en preguntas graduales sin spoilers; **Preguntar sobre esta guía** responde primero con una pista y la cita de origen (solo sobre tramos desbloqueados, sin inventar); y **Traducir tramo** traduce tramos al español con **Ver original**. Incluye estimación de costo antes de pistear.
+
 ## 0.46.0
 
 **Guías de pistas y soluciones, segunda parte: guías sin conexión y antispoiler.**

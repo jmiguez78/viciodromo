@@ -1,14 +1,22 @@
-// Rutas HTTP para guías de pistas y soluciones (Fases 1 y 2): enlaces, progreso («Acá estoy»), notas,
-// StrategyWiki, importación de archivos y visor auxiliar.
-import { badGateway, badRequest, notFound, withStatus } from '../http.mjs';
+// Rutas HTTP para guías de pistas y soluciones (Fases 1 a 3): enlaces, progreso («Acá estoy» y pistas vistas),
+// notas, StrategyWiki, importación de archivos, editor manual de preguntas, IA opcional y visor auxiliar.
+import { badGateway, badRequest, check, notFound, withStatus } from '../http.mjs';
 import { guideLinksFor, safeGuideUrl } from '../guide-sources/links.mjs';
 
 const NOTE_ID = /^[\w-]{1,64}$/;
 const GUIDE_ID = /^[a-z0-9][a-z0-9_-]{1,80}$/i;
 const SECTION_ID = /^[\w-]{1,40}$/;
+const QUESTION_ID = /^[\w-]{1,40}$/;
 
 export function guidesRoutes(router, d) {
   router.get('/api/guides', () => d.guides.summary());
+
+  router.get('/api/guides/ai', () => d.ai.status());
+  router.put('/api/guides/ai', async ({ body }) => {
+    const { key } = await body();
+    return d.ai.setKey(check.string(key, 'Pegá tu clave de API de Anthropic.', { max: 300 }));
+  });
+  router.delete('/api/guides/ai', () => d.ai.setKey(null));
 
   router.get('/api/guides/game/:key', async ({ params }) => {
     const game = await d.findGame(params.key);
@@ -31,7 +39,10 @@ export function guidesRoutes(router, d) {
       'showFutureTitles',
       'skipSpoilerConfirm',
       'revealSectionId',
-      'resetRevealed'
+      'resetRevealed',
+      'setHintCount',
+      'revealAnswer',
+      'hideQuestion'
     ]) {
       if (field in payload) patch[field] = payload[field];
     }
@@ -100,6 +111,70 @@ export function guidesRoutes(router, d) {
       mergeWithPrevious: payload.mergeWithPrevious === true
     });
     return { sections };
+  });
+
+  router.get('/api/guides/game/:key/items/:id/sections/:sectionId/questions/:qid', async ({ params }) => {
+    if (!GUIDE_ID.test(params.id) || !SECTION_ID.test(params.sectionId) || !QUESTION_ID.test(params.qid)) {
+      throw badRequest('Pregunta no válida.');
+    }
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    return d.guides.getQuestion(game.key, params.id, params.sectionId, params.qid);
+  });
+
+  router.post('/api/guides/game/:key/items/:id/sections/:sectionId/questions', async ({ params, body }) => {
+    if (!GUIDE_ID.test(params.id) || !SECTION_ID.test(params.sectionId)) throw badRequest('Tramo no válido.');
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    const payload = await body();
+    const created = await d.guides.addQuestion(game.key, params.id, params.sectionId, payload);
+    return withStatus(201, created);
+  });
+
+  router.put('/api/guides/game/:key/items/:id/sections/:sectionId/questions/:qid', async ({ params, body }) => {
+    if (!GUIDE_ID.test(params.id) || !SECTION_ID.test(params.sectionId) || !QUESTION_ID.test(params.qid)) {
+      throw badRequest('Pregunta no válida.');
+    }
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    return d.guides.updateQuestion(game.key, params.id, params.sectionId, params.qid, await body());
+  });
+
+  router.delete('/api/guides/game/:key/items/:id/sections/:sectionId/questions/:qid', async ({ params }) => {
+    if (!GUIDE_ID.test(params.id) || !SECTION_ID.test(params.sectionId) || !QUESTION_ID.test(params.qid)) {
+      throw badRequest('Pregunta no válida.');
+    }
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    await d.guides.deleteQuestion(game.key, params.id, params.sectionId, params.qid);
+    return withStatus(204);
+  });
+
+  router.post('/api/guides/game/:key/items/:id/sections/:sectionId/hints/generate', async ({ params }) => {
+    if (!GUIDE_ID.test(params.id) || !SECTION_ID.test(params.sectionId)) throw badRequest('Tramo no válido.');
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    const questions = await d.guides.generateHints(game, params.id, params.sectionId);
+    return withStatus(201, { questions });
+  });
+
+  router.post('/api/guides/game/:key/items/:id/sections/:sectionId/translate', async ({ params }) => {
+    if (!GUIDE_ID.test(params.id) || !SECTION_ID.test(params.sectionId)) throw badRequest('Tramo no válido.');
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    return d.guides.translateGuideSection(game, params.id, params.sectionId);
+  });
+
+  router.post('/api/guides/game/:key/items/:id/ask', async ({ params, body }) => {
+    if (!GUIDE_ID.test(params.id)) throw badRequest('Guía no válida.');
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    const payload = await body();
+    return d.guides.askGuide(game, params.id, {
+      sectionId: typeof payload.sectionId === 'string' ? payload.sectionId : null,
+      question: payload.question ?? '',
+      revealAnswer: payload.revealAnswer === true
+    });
   });
 
   router.post('/api/guides/game/:key/notes', async ({ params, body }) => {

@@ -57,7 +57,7 @@ Cada guía se organiza en **tramos** (capítulo, zona, nivel o jefe):
 | --- | --- | --- | --- |
 | **1. La guía en la ficha** | `0.45.0` · `guias` | Pestaña **Guía** con enlaces armados (GameFAQs, Steam, StrategyWiki, YouTube, IGN) en visor auxiliar aislado o navegador; **«Acá estoy»** manual persistente; **Notas de partida por tramo** con adjuntos de *Tus capturas*; **«Jugar con la guía»** en el otro monitor desde `Jugar ▾`. | Implementada |
 | **2. Guías sin conexión** | `0.46.0` · `guias-fase-2` | StrategyWiki por API MediaWiki con atribución; importador nativo de `.txt`, `.md` y `.html`; modo **Solución** con índice de tramos, búsqueda y antispoiler; filtro «Con guía»; consulta de disponibilidad en búsqueda nocturna. | Implementada |
-| **3. Pistas escalonadas** | `0.47.0` · `guias-fase-3` | Modo **Pistas** con preguntas, «Otra pista» y «Ver la respuesta»; editor manual de pistas; `src/ai.mjs` opcional para pistear, preguntar y traducir por tramo con cita de origen. | Pendiente |
+| **3. Pistas escalonadas** | `0.47.0` · `guias-fase-3` | Modo **Pistas** con preguntas, «Otra pista» y «Ver la respuesta»; editor manual de pistas; `src/ai.mjs` opcional para pistear, preguntar y traducir por tramo con cita de origen. | Implementada |
 | **4. Jugar con la guía al lado** | `0.48.0` · `guias-fase-4` | Ventana flotante siempre visible con transparencia y aviso de pantalla completa exclusiva; atajos globales; guía en el celular por QR (`src/guide-lan.mjs`); navegación con mando en modo sala; tramo guardado en la fila **Continuar** de Inicio. | Pendiente |
 | **5. Guías compartidas (opcional)** | A definir | Exportar/importar `.vicioguia.json`, carpeta comunitaria CC BY-SA y wikis de Fandom verificadas. | Por decidir tras Fase 4 |
 

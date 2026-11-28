@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 0.41.0
+
+**Novedades de los juegos que seguís.** Marcás un juego con **Seguir** y Viciódromo junta en un solo lugar sus parches, anuncios y lo que dice la prensa, sin depender de ninguna tienda.
+
+- **Seguir.** En la página del juego, al lado de Favorito, Editar y Listas. Al seguirlo, Viciódromo busca en Wikidata dónde publica el estudio (sitio oficial, Bluesky, YouTube y la ficha de Steam, aunque tengas el juego en otra tienda) y trae las últimas cinco novedades.
+- **Pestaña Novedades.** Cada novedad con su tipo (Actualización, Contenido, Anuncio, Evento o Prensa), la fuente, la fecha, un extracto y la imagen; el título abre la nota en el navegador. **Ocultar** saca la que no te interesa.
+- **Prensa en español.** 3DJuegos, Vandal, IGN Latinoamérica y Eurogamer.es: entran sólo las notas que nombran el juego. Si el nombre es corto o una palabra común («Control», «Prey»), la nota también tiene que nombrar al estudio. La misma historia contada por varios medios aparece una sola vez.
+- **Fuentes.** En la pestaña, cada fuente se puede destildar, y se agrega una a mano pegando el enlace del blog del juego, su canal de YouTube, un perfil de Bluesky o la ficha de Steam.
+- **Versión instalada.** En los juegos de Steam, avisa cuando Steam instaló una versión nueva en esta PC.
+- **Punto en las portadas.** Las novedades sin leer se ven como un número sobre la portada; abrir la pestaña las marca como leídas.
+- Viciódromo revisa al abrirse (si pasaron más de seis horas) y cada seis horas mientras está abierto. No hay cuenta, clave ni servidor propio: sólo salen los nombres e identificadores de los juegos que seguís. Las ofertas se guardan pero no se muestran.
+
 ## 0.40.0
 
 **Cada juego en su monitor.** Con dos monitores o más, elegís en cuál se abre cada juego: por ejemplo, los de carreras en la tele del volante y el resto en el monitor principal.

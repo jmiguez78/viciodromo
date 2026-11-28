@@ -47,6 +47,7 @@ flowchart LR
 | `activity.js`, `onboarding.js`                        | Tu actividad y Primeros pasos                                                              |
 | `lists.js`                                            | Listas propias: filas de Inicio, filtro de la Biblioteca y diálogos                        |
 | `displays.js`                                         | Monitor de cada juego: Jugar ▾, selector de Editar y Configuración → Monitores             |
+| `news.js`                                             | Novedades: botón Seguir, pestaña Novedades y punto de las portadas                         |
 
 `npm run check` comprueba la sintaxis de todo `src/` y de los scripts de la interfaz (`tools/check-syntax.mjs`), que cada `import` exista en su módulo de origen (`tools/check-modules.mjs`) y las reglas de los estilos (`tools/check-styles.mjs`). `window.GML` expone el estado y la navegación para depurar desde la consola.
 
@@ -58,6 +59,8 @@ flowchart LR
 - `src/screenshots.mjs`: tus capturas y videos, leídos de Steam, MAME, Xbox Game Bar, NVIDIA, Videos y las carpetas propias, y asociados a cada juego por número, set, carpeta o nombre de archivo. El índice vive en memoria (se rehace como mucho una vez por minuto). La interfaz nunca recibe rutas, sólo identificadores: `GET /api/screenshots/game/:key`, `GET /api/screenshots/recent`, `GET/PUT /api/screenshots/folders`, `GET /api/screenshots/file/:id`, `GET /api/screenshots/video/:id` (por partes, con `Range`) y `POST /api/screenshots/file/:id/open`.
 - `src/lists.mjs`: listas propias en `preferences.json` (validación y cambios). `POST /api/lists`, `PUT/DELETE /api/lists/:id`, `PUT /api/lists/:id/games` (`{ key, member }`). Llegan a la interfaz dentro de `/api/library` (`lists`); los juegos de una lista automática los calcula `GMLCatalog.listGames`.
 - `GET /api/onboarding`: datos de «Primeros pasos» (juegos por tienda, avance de la búsqueda, conexiones y claves que hay que reconectar).
+- `src/news.mjs`: novedades de los juegos que seguís. Al seguir uno, `discover` busca su entidad en Wikidata (por la ficha de Steam P1733 o de GOG P2725 y, si no, por nombre) y arma las fuentes: sitio oficial (P856, con el feed que declara la portada), Bluesky (P553 + P554, RSS público por perfil), YouTube (P2397, feed por canal), noticias de Steam (`ISteamNews/GetNewsForApp`, sin clave, sólo los anuncios del juego), prensa (`PRESS_FEEDS`, filtrada por nombre y, si es ambiguo, por estudio) y la versión instalada de Steam (`buildid` del manifiesto). La primera consulta deja las últimas cinco; después entra sólo lo no visto y publicado después de seguirlo (con un día de margen). Consulta al abrir si pasaron seis horas y cada seis horas; con `GML_OFFLINE=1`, nunca. Avisa a la interfaz con el evento `news`. Rutas en `src/routes/news.mjs`: `GET /api/news` (seguidos y sin leer), `POST /api/news/refresh`, `GET /api/news/game/:key`, `POST/DELETE /api/news/game/:key/follow`, `POST /api/news/game/:key/refresh`, `POST /api/news/game/:key/read`, `POST /api/news/game/:key/items/:id/hide`, `PUT /api/news/game/:key/sources/:id` (`{ enabled }`) y `POST /api/news/game/:key/sources` (`{ url }`).
+- `src/feeds.mjs`: lectura de RSS y Atom sin dependencias, noticias de Steam, descubrimiento del feed de una página, texto plano sin HTML, tipo de cada novedad y filtro de prensa (funciones puras, `test/feeds.test.mjs`). Los enlaces son sólo http/https y las imágenes, sólo https.
 - `src/wiki.mjs`: Wikipedia en inglés → Wikidata (videojuego, año, IGDB P5794, artículo en español) → introducción en español. Rutas de datos: `arcade-info.json`.
 - `src/mame-commands.mjs`: lee `command.dat` y convierte sus códigos en flechas y botones legibles. `GET /api/arcade/:set/commands`.
 - `src/zip-index.mjs`: lee el directorio central de un `.zip` (nombre, tamaño, CRC) sin descomprimir.
@@ -81,6 +84,7 @@ flowchart LR
 | `library.json`                 | `schema: 2`        | Inventario de la última búsqueda (se regenera)                 |
 | `arcade-*.json`, `mame-*.json` | `schema` propio    | Índice de Arcade (se regenera)                                 |
 | `sessions.json`                | `schemaVersion: 1` | Sesiones medidas por el launcher (hasta 5.000)                 |
+| `news.json`                    | `schemaVersion: 1` | Juegos seguidos, sus fuentes y novedades (hasta 50 por juego)  |
 | `logs/gml.log`                 | —                  | Registro de diagnóstico                                        |
 
 El servidor calcula `/api/library` una vez por versión de sus entradas: si ningún archivo cambió, reutiliza el resultado (y su JSON). La interfaz guarda la última biblioteca en IndexedDB y la pinta al abrir mientras pide la actual (`public/js/snapshot.js`).

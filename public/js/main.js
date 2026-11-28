@@ -13,6 +13,7 @@ import { loadActivity, setup as setupActivity } from './activity.js';
 import { setup as setupOnboarding } from './onboarding.js';
 import { setup as setupLists } from './lists.js';
 import { loadDisplays, setup as setupDisplays } from './displays.js';
+import { setup as setupNews } from './news.js';
 import { loadCaptureFolders, setupCaptureSettings } from './captures.js';
 import { request } from './api.js';
 import { readSnapshot, saveSnapshot } from './snapshot.js';
@@ -171,6 +172,7 @@ setupActivity();
 setupOnboarding();
 setupLists();
 setupDisplays();
+setupNews();
 document
   .querySelectorAll('.nav-item[data-page]')
   .forEach((button) => (button.onclick = () => showPage(button.dataset.page)));

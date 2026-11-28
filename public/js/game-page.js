@@ -4,6 +4,7 @@ import { artColors, heroArtUrl, paintBackdrop, preloadImage, showWordmark, statu
 import { decorateActions, playButtonHtml, posterAction, selectTile } from './cards.js';
 import { gameTabs } from './details.js';
 import { decoratePlay, playSplitHtml } from './displays.js';
+import { decorateFollow, followButtonHtml } from './news.js';
 import { icon } from './icons.js';
 import { otherCopies } from './library.js';
 import { showPage } from './main.js';
@@ -45,11 +46,14 @@ export function renderGameAside(game) {
     icon('pencil') +
     '<span>Editar</span></button><button type="button" class="button" data-action="lists">' +
     icon('list') +
-    '<span>Listas</span></button></div></div><dl class="game-stats"></dl>' +
+    '<span>Listas</span></button>' +
+    followButtonHtml(game) +
+    '</div></div><dl class="game-stats"></dl>' +
     '<div class="achievement-ring" hidden><svg viewBox="0 0 36 36" aria-hidden="true"><circle class="ring-track" cx="18" cy="18" r="15.5"/>' +
     '<circle class="ring-value" cx="18" cy="18" r="15.5" pathLength="100"/></svg><p><strong></strong><span></span></p></div>';
   aside.querySelector('[data-action=favorite] span').textContent = game.favorite ? 'En favoritos' : 'Favorito';
   decorateActions(aside, game);
+  decorateFollow(aside, game);
   decoratePlay(aside, game);
   aside.querySelectorAll('[data-action], [data-play-menu]').forEach((button) => (button.tabIndex = 0));
   const stats = aside.querySelector('.game-stats');

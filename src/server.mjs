@@ -39,6 +39,8 @@ import { preferencesRoutes } from './routes/preferences.mjs';
 import { integrationRoutes } from './routes/integrations.mjs';
 import { systemRoutes } from './routes/system.mjs';
 import { screenshotRoutes } from './routes/screenshots.mjs';
+import { newsRoutes } from './routes/news.mjs';
+import { createNews } from './news.mjs';
 import { createUpdates } from './updates.mjs';
 import { noAutoUpdate } from './auto-update.mjs';
 import { readFileSync } from 'node:fs';
@@ -364,6 +366,14 @@ const isSteamApp = (game) => game.platform === 'Steam' && /^\d+$/.test(game.id);
 // Rutas clásicas de la CDN: alcanzan para saber si hay arte en línea sin consultar a Steam.
 // GML_OFFLINE=1 (pruebas de interfaz): sólo imágenes locales, nunca descargas.
 const offline = process.env.GML_OFFLINE === '1';
+// Novedades de los juegos que seguís (ver news.mjs). Cada cambio llega a la interfaz con el evento «news».
+const news = createNews({
+  dataDir,
+  games: async () => (await library()).games,
+  offline,
+  log,
+  onChange: (summary) => tasks.emit('news', summary)
+});
 function onlineSources(game, meta, kind) {
   if (offline) return [];
   if (isArcade(game)) return arcade.onlineSources(game, kind);
@@ -1009,6 +1019,7 @@ export function createServer({
     },
     gameArt,
     screenshots,
+    news,
     saveScreenshotFolders,
     async openScreenshot(id) {
       const file = await screenshots.path(id);
@@ -1119,6 +1130,7 @@ export function createServer({
   integrationRoutes(router, deps);
   systemRoutes(router, deps);
   screenshotRoutes(router, deps);
+  newsRoutes(router, deps);
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -1233,6 +1245,7 @@ export function startServer(port = Number(process.env.PORT || 4321), options = {
     } catch {}
   }, 1000);
   updateSteam.unref();
+  news.start();
   const fixSchedule = setTimeout(() => repairSchedule().catch((error) => log('warn', 'tarea', error.message)), 3000);
   fixSchedule.unref();
   server.listen(port, '127.0.0.1', () =>

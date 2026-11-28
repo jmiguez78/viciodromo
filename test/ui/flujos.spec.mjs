@@ -197,3 +197,31 @@ test('tus capturas y videos: en la ficha del juego, en el visor y en Inicio', as
   await page.locator('#game-page [role=tab]', { hasText: 'Tus capturas' }).click();
   await expect(page.locator('#game-page [role=tabpanel]:not([hidden]) .capture-summary')).toContainText('F12');
 });
+
+test('novedades: seguir un juego desde la ficha, ver sus fuentes y dejar de seguirlo', async ({ page }) => {
+  await openApp(page);
+  await openGame(page, 'steam:900006');
+  const follow = page.locator('#game-aside [data-action=follow]');
+  await expect(follow).toHaveText('Seguir');
+  await expect(follow).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#game-page [role=tab]', { hasText: 'Novedades' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await expect(panel).toContainText('Seguí este juego');
+  // Sin conexión (pruebas), seguir arma las fuentes que se conocen por la tienda: Steam, la prensa y la versión.
+  await panel.locator('button', { hasText: 'Seguir' }).click();
+  await expect(follow).toHaveText('Siguiendo');
+  await expect(follow).toHaveAttribute('aria-pressed', 'true');
+  await expect(panel.locator('.capture-summary')).toContainText('Todavía no hay novedades');
+  await panel.locator('.news-sources summary').click();
+  await expect(panel.locator('.news-source strong')).toHaveText(['Steam', 'Prensa especializada', 'Versión instalada']);
+  // Destildar una fuente se guarda.
+  await panel.locator('.news-source', { hasText: 'Prensa especializada' }).locator('input').uncheck();
+  await expect(panel.locator('.news-sources summary')).toHaveText('Fuentes (1 activa)');
+  await follow.click();
+  await expect(follow).toHaveText('Seguir');
+  await expect(panel).toContainText('Seguí este juego');
+  // Arcade no tiene novedades: ni botón ni pestaña.
+  await openGame(page, 'arcade:laber');
+  await expect(page.locator('#game-aside [data-action=follow]')).toHaveCount(0);
+  await expect(page.locator('#game-page [role=tab]', { hasText: 'Novedades' })).toHaveCount(0);
+});

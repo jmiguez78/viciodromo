@@ -9,6 +9,7 @@ import { playGame } from './launch.js';
 import { library } from './library.js';
 import { remember, state } from './state.js';
 import { installSteamGame } from './steam.js';
+import { toggleFollow } from './news.js';
 
 // Acciones compartidas por portadas, filas, tabla y ficha. Los botones nacen fuera del orden de Tab;
 // selectTile los habilita sólo en el elemento activo de cada colección.
@@ -130,6 +131,7 @@ export async function posterAction(game, action) {
   if (action === 'page') return openGamePage(game);
   if (action === 'edit') return editGame(game);
   if (action === 'lists') return openPicker(game);
+  if (action === 'follow') return toggleFollow(game);
   if (action === 'favorite') {
     const previous = Boolean(game.favorite);
     try {

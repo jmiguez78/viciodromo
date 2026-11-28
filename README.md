@@ -18,6 +18,7 @@ Es un lanzador para Windows, con instalador o portable (sin instalar), y sin pub
 - **Inicio propone qué jugar**, con una imagen principal y filas por intención: Continuar, Favoritos, Instalados sin estrenar, Para una sesión corta, Lo mejor valorado, Clásicos del arcade y Para instalar.
 - **Biblioteca** en portadas o en tabla, con búsqueda, orden y filtros por tienda, género, duración, tiempo jugado, valoración y etiquetas. Aguanta miles de juegos.
 - **Página de cada juego** con arte, logo, descripción en español, logros de Steam, ficha de IGDB, tus notas y **tus capturas y videos**.
+- **Novedades** de los juegos que seguís: parches, anuncios y prensa en español, sin depender de la tienda.
 - **Jugar** abre el juego desde su tienda; la ventana se minimiza y, al cerrar el juego, vuelve con la duración de la sesión.
 - **Tu actividad**: horas por semana, racha, los más jugados y las últimas sesiones, medidas en todas las tiendas.
 - **Listas propias**, manuales o automáticas (una búsqueda guardada que se completa sola), como filas en Inicio.
@@ -35,6 +36,10 @@ Es un lanzador para Windows, con instalador o portable (sin instalar), y sin pub
 5. En **Configuración**, elegí el tema, si la ventana se minimiza al jugar, programá la búsqueda nocturna, revisá tus carpetas de capturas y respaldá tus preferencias.
 6. Armá **listas propias** desde la página de un juego («Listas») o con el botón **Listas** de la Biblioteca.
 7. Con un mando, apretá Menú (o F11) para el **modo sala**: A elige, B vuelve, X marca favorito, Y salta de letra en la Biblioteca, LB/RB cambian de sección, Vista (⧉) alterna entre los juegos listos para jugar y toda la colección, y Menú abre las opciones (incluida la salida).
+
+## Novedades
+
+Con **Seguir**, en la página de cada juego, la pestaña **Novedades** junta lo que publica el estudio y lo que dice la prensa. Viciódromo busca en Wikidata los canales del juego (sitio oficial, Bluesky, YouTube y la ficha de Steam, aunque lo tengas en otra tienda) y suma las notas de 3DJuegos, Vandal, IGN Latinoamérica y Eurogamer.es que lo nombran. En los juegos de Steam también avisa cuando se instaló una versión nueva. Las fuentes se pueden destildar o agregar a mano, y las novedades sin leer se ven como un número sobre la portada. Revisa al abrirse y cada seis horas; no pide cuenta ni clave.
 
 ## Tus capturas y videos
 

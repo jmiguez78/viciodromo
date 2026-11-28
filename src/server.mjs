@@ -378,7 +378,12 @@ const news = createNews({
   mameVersion: async () => (await arcade.info()).version,
   onChange: (summary) => tasks.emit('news', summary)
 });
-const guides = createGuides({ dataDir, log });
+const guides = createGuides({
+  dataDir,
+  offline,
+  log,
+  onChange: (summary) => tasks.emit('guides', summary)
+});
 function onlineSources(game, meta, kind) {
   if (offline) return [];
   if (isArcade(game)) return arcade.onlineSources(game, kind);
@@ -791,16 +796,21 @@ async function diagnostics() {
       readable: saved !== null
     });
   }
-  const guidesInfo = await fs.stat(guides.filePath).catch(() => null);
-  if (guidesInfo?.isFile()) {
-    const saved = guidesInfo.size < 50_000_000 ? await readJsonCached(guides.filePath, null) : null;
-    files.push({
-      name: 'guides/progress.json',
-      bytes: guidesInfo.size,
-      modifiedAt: guidesInfo.mtime.toISOString(),
-      schema: saved?.schemaVersion ?? saved?.schema ?? null,
-      readable: saved !== null
-    });
+  for (const [label, targetPath] of [
+    ['guides/progress.json', guides.filePath],
+    ['guides/index.json', guides.indexPath]
+  ]) {
+    const guidesInfo = await fs.stat(targetPath).catch(() => null);
+    if (guidesInfo?.isFile()) {
+      const saved = guidesInfo.size < 50_000_000 ? await readJsonCached(targetPath, null) : null;
+      files.push({
+        name: label,
+        bytes: guidesInfo.size,
+        modifiedAt: guidesInfo.mtime.toISOString(),
+        schema: saved?.schemaVersion ?? saved?.schema ?? null,
+        readable: saved !== null
+      });
+    }
   }
   const catalog = await library().catch(() => ({ games: [] }));
   const byPlatform = {};

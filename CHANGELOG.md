@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 0.46.0
+
+**Guías de pistas y soluciones, segunda parte: guías sin conexión y antispoiler.**
+
+- **StrategyWiki sin conexión.** Desde la pestaña **Guía**, buscá y descargá guías libres de StrategyWiki (CC BY-SA 4.0 / 3.0) para leerlas sin internet, divididas en tramos y con atribución visible, número de revisión y enlace al original.
+- **Importar archivos propios.** Importá guías en `.txt`, `.md` o `.html` que ya tengas en tu PC: detecta tramos por encabezados, subrayados o numeración de FAQs, y permite renombrar tramos o unir cortes con el anterior. Quedan sólo en tu equipo.
+- **Lector por tramos con búsqueda y antispoiler.** Índice lateral con búsqueda interna. Al marcar **«Acá estoy»** en un tramo, los tramos siguientes se muestran como `Tramo N` y quedan protegidos por confirmación breve (con opción de mostrar títulos o no volver a preguntar en ese juego).
+- **Biblioteca y búsqueda nocturna.** Nuevo filtro **Con guía** e insignia en la portada de los juegos con guía sin conexión; la búsqueda nocturna consulta en lotes qué juegos instalados tienen guía disponible en StrategyWiki sin descargarlas.
+
 ## 0.45.0
 
 **Guías de pistas y soluciones, primera parte: la guía en la ficha.**

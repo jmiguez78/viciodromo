@@ -382,3 +382,71 @@ test('guía fase 1: enlaces, Acá estoy, notas con captura y Jugar con la guía'
   expect(openCalls[0].inactive).toBe(true);
   expect(openCalls[0].display?.id).toBe('2');
 });
+
+test('guía fase 2: importar archivo, lectura por tramos, antispoiler y filtro Con guía', async ({ page }) => {
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+
+  const faqText = [
+    'Capítulo 1: El bosque',
+    '======================',
+    'Activá la palanca oculta detrás de la cascada.',
+    '',
+    'Capítulo 2: La torre',
+    '====================',
+    'Subí hasta el último piso con la llave plateada.',
+    '',
+    'Capítulo 3: El jefe final',
+    '=========================',
+    'Esquivá el ataque circular tres veces.'
+  ].join('\n');
+
+  await panel.locator('.guide-offline-card input[type=file]').setInputFiles({
+    name: 'guia-ambar.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(faqText, 'utf8')
+  });
+
+  await expect(panel.locator('.guide-toc-item')).toHaveCount(3);
+  await expect(panel.locator('.guide-attribution')).toContainText('guia-ambar.txt');
+
+  // Búsqueda dentro de la guía.
+  await panel.locator('.guide-search-row input[type=search]').fill('palanca');
+  await expect(panel.locator('.guide-search-row')).toContainText('1 coincidencia');
+  await panel.locator('.guide-search-row input[type=search]').fill('');
+
+  // Marcar tramo 1 como «Acá estoy» oculta los tramos futuros.
+  await panel.locator('.guide-solution-actions button', { hasText: 'Marcar «Acá estoy» aquí' }).click();
+  await expect(panel.locator('.guide-toc-item').nth(1)).toContainText('Tramo 2');
+  await expect(panel.locator('.guide-toc-item').nth(1)).toContainText('Oculto');
+
+  // Abrir Tramo 2 muestra la puerta antispoiler y permite revelarlo.
+  await panel.locator('.guide-toc-item').nth(1).click();
+  await expect(panel.locator('.guide-spoiler-gate')).toBeVisible();
+  await panel.locator('.guide-spoiler-gate button', { hasText: 'Ver este tramo' }).click();
+  await expect(panel.locator('.guide-solution-body')).toContainText('llave plateada');
+
+  // Mostrar títulos futuros revela el nombre de Tramo 3 en el índice.
+  await panel.locator('.guide-toc .guide-future-toggle input').check();
+  await expect(panel.locator('.guide-toc-item').nth(2)).toContainText('Capítulo 3: El jefe final');
+
+  // En Biblioteca: insignia de guía en la portada y filtro «Con guía».
+  await show(page, 'library');
+  await expect(page.locator('#library .poster[data-key="steam:900000"] .guide-poster-badge')).toBeVisible();
+  await page.click('#toggle-filters');
+  await page.click('#guides-only');
+  await expect(page.locator('#library .poster')).toHaveCount(1);
+  await expect(page.locator('#active-filters')).toContainText('Con guía');
+  await page.click('#guides-only');
+  await page.click('#toggle-filters');
+
+  // Limpiar guía importada y marca de tramo para dejar el fixture intacto.
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
+  await expect(panel.locator('.guide-reader')).toHaveCount(0);
+  await panel.locator('.guide-section-form button', { hasText: 'Limpiar' }).click();
+  await expect(panel.locator('.guide-section-form input')).toHaveValue('');
+});

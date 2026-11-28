@@ -4,7 +4,17 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { guideLinksFor, safeGuideUrl, steamAppIdFor } from '../src/guide-sources/links.mjs';
-import { cleanCaptureIds, companionDisplay, createGuides } from '../src/guides.mjs';
+import {
+  buildStrategyWikiGuide,
+  checkStrategyWikiBatch,
+  downloadStrategyWikiGuide,
+  extractWalkthroughSubpages,
+  licenseForRevision,
+  pickSearchMatch
+} from '../src/guide-sources/strategywiki.mjs';
+import { htmlToMarkdown, splitHtmlIntoSections, stripUnsafe } from '../src/guide-sanitize.mjs';
+import { detectMarkdownSections, detectTxtSections, importGuideFile } from '../src/guide-import.mjs';
+import { applyAntiSpoiler, cleanCaptureIds, companionDisplay, createGuides, nightlyGuides } from '../src/guides.mjs';
 import { describeDisplays } from '../src/displays.mjs';
 
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-guides-test-'));
@@ -257,5 +267,249 @@ test('sin visor Electron, POST /api/guides/game/:key/open devuelve opened=extern
     assert.ok(body.url.startsWith('https://gamefaqs.gamespot.com/search?game=Hollow%20Knight'));
   } finally {
     webServer.close();
+  }
+});
+
+test('guide-sanitize limpia scripts, enlaces inseguros y corta HTML de wiki en tramos', () => {
+  const dirty =
+    '<div id="toc">Tabla</div>' +
+    '<h2>Capítulo 1<span class="mw-editsection">[edit]</span></h2>' +
+    '<p>Entrá por la <a href="/wiki/Puerta">puerta norte</a> y <a href="javascript:alert(1)">no toques</a> esto.</p>' +
+    '<script>evil()</script><iframe src="https://evil.example"></iframe>' +
+    '<h2>Capítulo 2</h2><p>Vencé al <strong>guardián</strong> del puente.</p>';
+  assert.equal(stripUnsafe(dirty).includes('evil()'), false);
+  const md = htmlToMarkdown('<p>Hola <strong>mundo</strong> <img src="/images/a.png" alt="Mapa"></p>', {
+    baseUrl: 'https://strategywiki.org'
+  });
+  assert.match(md, /\*\*mundo\*\*/);
+  assert.match(md, /!\[Mapa\]\(https:\/\/strategywiki\.org\/images\/a\.png\)/);
+
+  const sections = splitHtmlIntoSections(dirty, 'Prueba', { baseUrl: 'https://strategywiki.org' });
+  assert.equal(sections.length, 2);
+  assert.equal(sections[0].title, 'Capítulo 1');
+  assert.match(sections[0].solution, /\[puerta norte\]\(https:\/\/strategywiki\.org\/wiki\/Puerta\)/);
+  assert.equal(sections[0].solution.includes('javascript:'), false);
+  assert.equal(sections[1].title, 'Capítulo 2');
+});
+
+test('strategywiki: coincidencia, subpáginas, licencia por fecha, descarga offline y consulta en lote', async () => {
+  assert.equal(licenseForRevision('2023-05-01T00:00:00Z'), 'CC BY-SA 3.0');
+  assert.equal(licenseForRevision('2025-01-15T00:00:00Z'), 'CC BY-SA 4.0');
+
+  const match = pickSearchMatch(
+    [{ title: 'Talk:Chrono Trigger' }, { title: 'Chrono Trigger' }, { title: 'Chrono Trigger/Walkthrough' }],
+    ['Chrono Trigger']
+  );
+  assert.equal(match?.pageTitle, 'Chrono Trigger/Walkthrough');
+
+  const tocHtml =
+    '<a href="/wiki/Chrono_Trigger/Table_of_Contents">TOC</a>' +
+    '<a href="/wiki/Chrono_Trigger/Millennial_Fair">Feria</a>' +
+    '<a href="/wiki/Chrono_Trigger/Zeal_Palace">Zeal</a>';
+  assert.deepEqual(extractWalkthroughSubpages(tocHtml, 'Chrono Trigger'), [
+    'Chrono Trigger/Millennial Fair',
+    'Chrono Trigger/Zeal Palace'
+  ]);
+
+  const fakeFetch = async (url) => {
+    const parsed = new URL(url);
+    const action = parsed.searchParams.get('action');
+    if (action === 'query' && parsed.searchParams.get('list') === 'search') {
+      return new Response(JSON.stringify({ query: { search: [{ title: 'Chrono Trigger/Walkthrough' }] } }));
+    }
+    if (action === 'query' && parsed.searchParams.get('prop') === 'revisions') {
+      return new Response(
+        JSON.stringify({ query: { pages: [{ revisions: [{ timestamp: '2025-02-01T10:00:00Z' }] }] } })
+      );
+    }
+    if (action === 'query' && parsed.searchParams.get('titles')) {
+      return new Response(
+        JSON.stringify({
+          query: {
+            normalized: [{ from: 'Chrono_Trigger/Walkthrough', to: 'Chrono Trigger/Walkthrough' }],
+            pages: [{ title: 'Chrono Trigger/Walkthrough' }]
+          }
+        })
+      );
+    }
+    if (action === 'parse') {
+      const page = parsed.searchParams.get('page');
+      if (page === 'Chrono Trigger/Walkthrough') {
+        return new Response(
+          JSON.stringify({
+            parse: {
+              title: 'Chrono Trigger/Walkthrough',
+              revid: 9876,
+              text: tocHtml
+            }
+          })
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          parse: { title: page, revid: 9877, text: `<p>Recorrido de ${page}.</p>` }
+        })
+      );
+    }
+    throw new Error('URL no esperada: ' + url);
+  };
+
+  const guide = await downloadStrategyWikiGuide(
+    { key: 'steam:613830', name: 'Chrono Trigger' },
+    { fetchImpl: fakeFetch, pauseMs: 0 }
+  );
+  assert.equal(guide.source.license, 'CC BY-SA 4.0');
+  assert.equal(guide.source.revision, 9876);
+  assert.equal(guide.sections.length, 2);
+  assert.equal(guide.sections[0].title, 'Millennial Fair');
+
+  const batch = await checkStrategyWikiBatch([{ key: 'steam:613830', name: 'Chrono Trigger' }], {
+    fetchImpl: fakeFetch
+  });
+  assert.equal(batch.get('steam:613830')?.available, true);
+
+  const built = buildStrategyWikiGuide({
+    gameKey: 'steam:613830',
+    title: 'Chrono Trigger',
+    pageTitle: 'Chrono Trigger',
+    revision: 1,
+    timestamp: '2020-01-01T00:00:00Z',
+    sections: [{ title: 'Inicio', solution: 'Texto' }]
+  });
+  assert.equal(built.source.license, 'CC BY-SA 3.0');
+});
+
+test('guide-import detecta tramos en 3 FAQs reales simuladas, Markdown y rechaza PDF', () => {
+  // 1. FAQ con subrayados =====
+  const faq1 = [
+    'GUIA DE AVENTURA',
+    '',
+    'Capítulo 1: El pueblo',
+    '=====================',
+    'Hablá con el herrero para recibir la brújula.',
+    '',
+    'Capítulo 2: El templo',
+    '=====================',
+    'Usá la brújula frente a la estatua.'
+  ].join('\n');
+  const s1 = detectTxtSections(faq1);
+  assert.equal(s1.length, 2);
+  assert.equal(s1[0].title, 'Capítulo 1: El pueblo');
+  assert.equal(s1[1].title, 'Capítulo 2: El templo');
+
+  // 2. FAQ con índice consecutivo seguido de secciones numeradas reales
+  const faq2 = [
+    'INDICE',
+    '1. Introduccion',
+    '2. Ruinas',
+    '',
+    '1. Introduccion',
+    'Recogé la antorcha en la entrada norte antes de bajar.',
+    '',
+    '2. Ruinas',
+    'Encendé los cuatro braseros en sentido horario.'
+  ].join('\n');
+  const s2 = detectTxtSections(faq2);
+  assert.equal(s2.length, 2);
+  assert.equal(s2[0].title, '1. Introduccion');
+  assert.equal(s2[1].title, '2. Ruinas');
+
+  // 3. Texto plano sin encabezados claros -> un único tramo con búsqueda
+  const faq3 = 'Caminá hacia el sur hasta encontrar la cabaña.\nEl código de la puerta es 4815.';
+  const s3 = detectTxtSections(faq3, 'Notas sueltas');
+  assert.equal(s3.length, 1);
+  assert.equal(s3[0].title, 'Notas sueltas');
+
+  // Markdown ignorando # dentro de bloque de código
+  const md = '# Parte 1\nTexto uno\n```\n# Comentario codigo\n```\n# Parte 2\nTexto dos';
+  assert.equal(detectMarkdownSections(md).length, 2);
+
+  assert.throws(
+    () => importGuideFile({ filename: 'manual.pdf', content: '%PDF-1.4', gameKey: 'steam:613830' }),
+    /\.txt, \.md o \.html/
+  );
+  const imported = importGuideFile({ filename: 'walk.txt', content: faq1, gameKey: 'steam:613830' });
+  assert.equal(imported.source.type, 'file');
+  assert.equal(imported.sections.length, 2);
+});
+
+test('applyAntiSpoiler oculta tramos futuros y la API de Fase 2 importa, edita, borra sin perder notas y corre nightlyGuides', async () => {
+  const sections = [
+    { id: 's01', order: 1, title: 'Bosque', solution: 'Paso 1' },
+    { id: 's02', order: 2, title: 'Torre secreta', solution: 'Paso 2' },
+    { id: 's03', order: 3, title: 'Jefe final', solution: 'Paso 3' }
+  ];
+  const hidden = applyAntiSpoiler(sections, { currentSectionId: 's01', showFutureTitles: false });
+  assert.equal(hidden[0].locked, false);
+  assert.equal(hidden[1].locked, true);
+  assert.equal(hidden[1].displayTitle, 'Tramo 2');
+  assert.equal(hidden[1].solution, '');
+
+  const revealed = applyAntiSpoiler(sections, {
+    currentSectionId: 's01',
+    revealedSections: ['s02'],
+    showFutureTitles: false
+  });
+  assert.equal(revealed[1].locked, false);
+  assert.equal(revealed[1].displayTitle, 'Torre secreta');
+  assert.equal(revealed[2].locked, true);
+
+  // Importar vía HTTP, conservar notas al borrar la guía y editar tramo
+  await fetch(`${base}/api/guides/game/${encodeURIComponent('gog galaxy:hollow')}/notes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ section: 'Bosque', text: 'Nota que sobrevive.' })
+  });
+  const impRes = await fetch(`${base}/api/guides/game/${encodeURIComponent('gog galaxy:hollow')}/import`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      filename: 'hollow.txt',
+      content: 'Bosque\n======\nSaltar por la izquierda.\n\nCiudad\n======\nHablar con Cornifer.'
+    })
+  });
+  assert.equal(impRes.status, 201);
+  const impData = await impRes.json();
+  const guideId = impData.activeGuide.id;
+
+  const summary = await (await fetch(`${base}/api/guides`)).json();
+  assert.ok(summary.withGuide.includes('gog galaxy:hollow'));
+
+  const renameRes = await fetch(
+    `${base}/api/guides/game/${encodeURIComponent('gog galaxy:hollow')}/items/${guideId}/sections/s02`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Ciudad de Lágrimas' })
+    }
+  );
+  assert.equal(renameRes.status, 200);
+  const renamed = await renameRes.json();
+  assert.equal(renamed.sections[1].title, 'Ciudad de Lágrimas');
+
+  const delRes = await fetch(`${base}/api/guides/game/${encodeURIComponent('gog galaxy:hollow')}/items/${guideId}`, {
+    method: 'DELETE'
+  });
+  assert.equal(delRes.status, 204);
+  const afterDel = await (await fetch(`${base}/api/guides/game/${encodeURIComponent('gog galaxy:hollow')}`)).json();
+  assert.equal(afterDel.activeGuide, null);
+  assert.equal(afterDel.notes.length, 1);
+
+  // nightlyGuides consulta en lote sin descargar contenido
+  const nightDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-nightly-guides-'));
+  try {
+    await fs.writeFile(
+      path.join(nightDir, 'library.json'),
+      JSON.stringify({ schema: 2, games: [{ key: 'steam:613830', name: 'Chrono Trigger', platform: 'Steam' }] })
+    );
+    const night = await nightlyGuides(nightDir, () => {}, {
+      offline: false,
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ query: { pages: [{ title: 'Chrono Trigger/Walkthrough' }] } }))
+    });
+    assert.equal(night.checked, 1);
+    assert.equal(night.found, 1);
+  } finally {
+    await fs.rm(nightDir, { recursive: true, force: true });
   }
 });

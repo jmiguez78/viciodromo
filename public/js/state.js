@@ -4,6 +4,7 @@ export const state = {
   games: [],
   query: '',
   favorite: false,
+  withGuide: false,
   // Facetas de la Biblioteca (ver catalog.js): dentro de cada una las opciones se suman.
   filters: { store: [], genre: [], length: [], played: [], rating: [], decade: [], players: [], tag: [] },
   sort: 'name',

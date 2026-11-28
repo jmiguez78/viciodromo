@@ -1,5 +1,5 @@
-// Pestaña Guía de la ficha (Fase 1): enlaces armados en visor auxiliar o navegador, marca «Acá estoy» y notas de
-// partida por tramo con capturas adjuntas.
+// Guías de pistas y soluciones (Fases 1 y 2): enlaces directos en visor auxiliar o navegador, guías sin conexión
+// (StrategyWiki e importación .txt/.md/.html), antispoiler por tramo, marca «Acá estoy» y notas con capturas.
 import { request } from './api.js';
 import { openMediaViewer } from './details.js';
 import { notify, notifyError } from './feedback.js';
@@ -17,6 +17,60 @@ const dateText = (value) =>
     : '';
 const thumbUrl = (id) => '/api/screenshots/file/' + encodeURIComponent(id) + '?thumb=1';
 const fullUrl = (id) => '/api/screenshots/file/' + encodeURIComponent(id);
+
+let guideSummary = { withGuide: new Set(), available: new Set() };
+export const hasGuide = (key) => guideSummary.withGuide.has(key);
+
+function applyGuideSummary(data) {
+  if (!data) return;
+  guideSummary = {
+    withGuide: new Set(data.withGuide ?? []),
+    available: new Set(data.available ?? [])
+  };
+  paintGuideBadges();
+}
+
+export async function loadGuideSummary() {
+  try {
+    applyGuideSummary(await request('/api/guides'));
+  } catch {
+    /* sin servidor: las portadas quedan sin insignia de guía */
+  }
+}
+
+let paintingBadges = 0;
+export function paintGuideBadges() {
+  cancelAnimationFrame(paintingBadges);
+  paintingBadges = requestAnimationFrame(() => {
+    document.querySelectorAll('.guide-poster-badge').forEach((badge) => {
+      const key = badge.closest('[data-key]')?.dataset.key;
+      if (!hasGuide(key)) badge.remove();
+    });
+    for (const key of guideSummary.withGuide) {
+      document.querySelectorAll('.poster[data-key="' + CSS.escape(key) + '"] .poster-art').forEach((art) => {
+        if (art.querySelector('.guide-poster-badge')) return;
+        const badge = document.createElement('span');
+        badge.className = 'guide-poster-badge';
+        badge.title = 'Con guía sin conexión';
+        badge.setAttribute('aria-label', 'Con guía sin conexión');
+        badge.setAttribute('role', 'img');
+        badge.innerHTML = icon('book');
+        art.append(badge);
+      });
+    }
+  });
+}
+
+export function setup() {
+  loadGuideSummary();
+  window.addEventListener('gml-guides', (event) => applyGuideSummary(event.detail));
+  const isTile = (node) =>
+    node.nodeType === 1 && !node.classList.contains('guide-poster-badge') && !node.closest('.guide-poster-badge');
+  new MutationObserver((changes) => {
+    if (!guideSummary.withGuide.size) return;
+    if (changes.some((change) => [...change.addedNodes].some(isTile))) paintGuideBadges();
+  }).observe(document.querySelector('main') ?? document.body, { childList: true, subtree: true });
+}
 
 export async function openGuideForGame(game, { url = null, display = null, inactive = false } = {}) {
   try {
@@ -36,6 +90,148 @@ export async function openGuideForGame(game, { url = null, display = null, inact
     if (!inactive) notifyError(error);
     return null;
   }
+}
+
+function appendHighlightedText(parent, text, query) {
+  const clean = String(text ?? '');
+  const q = String(query ?? '').trim();
+  if (q.length < 2) {
+    parent.append(document.createTextNode(clean));
+    return;
+  }
+  const lower = clean.toLowerCase();
+  const needle = q.toLowerCase();
+  let cursor = 0;
+  let idx = lower.indexOf(needle, cursor);
+  while (idx >= 0) {
+    if (idx > cursor) parent.append(document.createTextNode(clean.slice(cursor, idx)));
+    const mark = document.createElement('mark');
+    mark.textContent = clean.slice(idx, idx + needle.length);
+    parent.append(mark);
+    cursor = idx + needle.length;
+    idx = lower.indexOf(needle, cursor);
+  }
+  if (cursor < clean.length) parent.append(document.createTextNode(clean.slice(cursor)));
+}
+
+function appendInlineMarkdown(parent, text, query) {
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\(https:\/\/[^)\s]+\))/g;
+  let last = 0;
+  for (const match of String(text ?? '').matchAll(pattern)) {
+    if (match.index > last) appendHighlightedText(parent, text.slice(last, match.index), query);
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**')) {
+      const strong = document.createElement('strong');
+      appendHighlightedText(strong, token.slice(2, -2), query);
+      parent.append(strong);
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      const em = document.createElement('em');
+      appendHighlightedText(em, token.slice(1, -1), query);
+      parent.append(em);
+    } else if (token.startsWith('`') && token.endsWith('`')) {
+      const code = document.createElement('code');
+      appendHighlightedText(code, token.slice(1, -1), query);
+      parent.append(code);
+    } else {
+      const linkMatch = /^\[([^\]]+)\]\((https:\/\/[^)\s]+)\)$/.exec(token);
+      if (linkMatch) {
+        const a = document.createElement('a');
+        a.href = linkMatch[2];
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        appendHighlightedText(a, linkMatch[1], query);
+        parent.append(a);
+      } else {
+        appendHighlightedText(parent, token, query);
+      }
+    }
+    last = match.index + token.length;
+  }
+  if (last < String(text ?? '').length) appendHighlightedText(parent, text.slice(last), query);
+}
+
+// Render seguro de Markdown en DOM puro (nunca innerHTML con contenido externo).
+function renderSafeMarkdown(container, markdown, query = '') {
+  container.replaceChildren();
+  const lines = String(markdown ?? '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n');
+  let list = null;
+  let paragraph = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    const p = document.createElement('p');
+    appendInlineMarkdown(p, paragraph.join(' '), query);
+    container.append(p);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    container.append(list);
+    list = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    const imgMatch = /^!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)$/.exec(line);
+    if (imgMatch) {
+      flushParagraph();
+      flushList();
+      const figure = document.createElement('figure');
+      figure.className = 'guide-md-figure';
+      const img = document.createElement('img');
+      img.src = imgMatch[2];
+      img.alt = imgMatch[1] || 'Imagen de la guía';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      img.onerror = () => figure.remove();
+      figure.append(img);
+      container.append(figure);
+      continue;
+    }
+    const headMatch = /^(#{1,4})\s+(.+)$/.exec(line);
+    if (headMatch) {
+      flushParagraph();
+      flushList();
+      const h = document.createElement(headMatch[1].length <= 2 ? 'h4' : 'h5');
+      appendInlineMarkdown(h, headMatch[2], query);
+      container.append(h);
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      flushParagraph();
+      if (!list) list = document.createElement('ul');
+      const li = document.createElement('li');
+      appendInlineMarkdown(li, line.replace(/^[-*]\s+/, ''), query);
+      list.append(li);
+      continue;
+    }
+    flushList();
+    paragraph.push(line);
+  }
+  flushParagraph();
+  flushList();
+}
+
+function countOccurrences(text, query) {
+  const q = String(query ?? '')
+    .trim()
+    .toLowerCase();
+  if (q.length < 2 || !text) return 0;
+  const hay = text.toLowerCase();
+  let count = 0;
+  let pos = hay.indexOf(q, 0);
+  while (pos >= 0) {
+    count += 1;
+    pos = hay.indexOf(q, pos + q.length);
+  }
+  return count;
 }
 
 async function fetchGameImages(gameKey) {
@@ -197,7 +393,525 @@ export async function loadGuideTab(panel, game) {
   const root = document.createElement('div');
   root.className = 'guide-tab';
 
-  // ── 1. Cabecera y «Acá estoy» ──
+  let selectedSectionId =
+    (data.progress.currentSectionId &&
+      data.activeGuide?.sections?.some((s) => s.id === data.progress.currentSectionId) &&
+      data.progress.currentSectionId) ||
+    data.activeGuide?.sections?.[0]?.id ||
+    null;
+  let searchQuery = '';
+  let wikiSearchState = null;
+
+  const reloadTab = async (keepSectionId = null) => {
+    const fresh = await request(guideUrl(game.key));
+    if (panel.dataset.guideKey !== game.key || !panel.isConnected) return;
+    data = fresh;
+    if (keepSectionId && data.activeGuide?.sections?.some((s) => s.id === keepSectionId)) {
+      selectedSectionId = keepSectionId;
+    } else if (!data.activeGuide?.sections?.some((s) => s.id === selectedSectionId)) {
+      selectedSectionId =
+        (data.progress.currentSectionId &&
+          data.activeGuide?.sections?.some((s) => s.id === data.progress.currentSectionId) &&
+          data.progress.currentSectionId) ||
+        data.activeGuide?.sections?.[0]?.id ||
+        null;
+    }
+    sectionInput.value = data.progress.currentSection || '';
+    clearSectionBtn.hidden = !data.progress.currentSection;
+    updateSubtitle();
+    renderOfflineSection();
+    renderLinks();
+    renderNotes();
+  };
+
+  // ── 1. Guía sin conexión (StrategyWiki, archivos propios y lector con antispoiler) ──
+  const offlineCard = document.createElement('section');
+  offlineCard.className = 'guide-card guide-offline-card';
+
+  function renderOfflineSection() {
+    offlineCard.replaceChildren();
+    const head = document.createElement('div');
+    head.className = 'guide-card-head';
+    const titleWrap = document.createElement('div');
+    const title = document.createElement('h3');
+    title.innerHTML = icon('book') + '<span>Guía sin conexión</span>';
+    const hint = document.createElement('p');
+    hint.className = 'helper-text';
+    hint.textContent = data.activeGuide
+      ? 'Leé por tramos sin internet y ocultá lo que viene después de «Acá estoy».'
+      : 'Descargá una guía libre de StrategyWiki o importá un archivo propio (.txt, .md, .html).';
+    titleWrap.append(title, hint);
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'guide-offline-actions';
+
+    if (data.guides?.length > 1) {
+      const select = document.createElement('select');
+      select.className = 'guide-select';
+      select.setAttribute('aria-label', 'Elegir guía descargada o importada');
+      data.guides.forEach((item) => {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.textContent =
+          item.title +
+          ' (' +
+          (item.source?.type === 'strategywiki' ? 'StrategyWiki' : item.source?.filename || 'Archivo') +
+          ')';
+        opt.selected = item.id === data.activeGuide?.id;
+        select.append(opt);
+      });
+      select.onchange = async () => {
+        try {
+          await request(guideUrl(game.key) + '/progress', jsonRequest('PUT', { activeGuideId: select.value }));
+          await reloadTab();
+        } catch (error) {
+          notifyError(error);
+        }
+      };
+      toolbar.append(select);
+    }
+
+    const wikiBtn = document.createElement('button');
+    wikiBtn.type = 'button';
+    wikiBtn.className = 'button small';
+    wikiBtn.textContent = data.availability?.available ? 'Descargar de StrategyWiki' : 'Buscar en StrategyWiki';
+    wikiBtn.onclick = async () => {
+      wikiBtn.disabled = true;
+      try {
+        if (data.availability?.available && data.availability?.pageTitle) {
+          wikiBtn.textContent = 'Descargando…';
+          await request(
+            guideUrl(game.key) + '/strategywiki/download',
+            jsonRequest('POST', { pageTitle: data.availability.pageTitle })
+          );
+          wikiSearchState = null;
+          await loadGuideSummary();
+          await reloadTab();
+          notify('Guía descargada de StrategyWiki.', { type: 'success' });
+        } else {
+          wikiBtn.textContent = 'Buscando…';
+          wikiSearchState = await request(guideUrl(game.key) + '/strategywiki/search', { method: 'POST' });
+          renderOfflineSection();
+        }
+      } catch (error) {
+        notifyError(error);
+        wikiBtn.disabled = false;
+        wikiBtn.textContent = data.availability?.available ? 'Descargar de StrategyWiki' : 'Buscar en StrategyWiki';
+      }
+    };
+    toolbar.append(wikiBtn);
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.txt,.md,.html,.htm';
+    fileInput.hidden = true;
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = '';
+      if (!file) return;
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        notify('Por ahora se pueden importar guías en .txt, .md o .html (no .pdf).', { type: 'error' });
+        return;
+      }
+      try {
+        const content = await file.text();
+        await request(guideUrl(game.key) + '/import', jsonRequest('POST', { filename: file.name, content }));
+        await loadGuideSummary();
+        await reloadTab();
+        notify('Guía importada: ' + file.name, { type: 'success' });
+      } catch (error) {
+        notifyError(error);
+      }
+    };
+    const importBtn = document.createElement('button');
+    importBtn.type = 'button';
+    importBtn.className = 'button small';
+    importBtn.innerHTML = icon('upload') + '<span>Importar archivo</span>';
+    importBtn.onclick = () => fileInput.click();
+    toolbar.append(importBtn, fileInput);
+
+    if (data.activeGuide) {
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'button small';
+      delBtn.textContent = 'Quitar guía';
+      delBtn.onclick = async () => {
+        delBtn.disabled = true;
+        try {
+          await request(guideUrl(game.key) + '/items/' + encodeURIComponent(data.activeGuide.id), {
+            method: 'DELETE'
+          });
+          await loadGuideSummary();
+          await reloadTab();
+          notify('Guía quitada (tus notas y tu avance se conservan).', { type: 'info' });
+        } catch (error) {
+          delBtn.disabled = false;
+          notifyError(error);
+        }
+      };
+      toolbar.append(delBtn);
+    }
+
+    head.append(titleWrap, toolbar);
+    offlineCard.append(head);
+
+    if (wikiSearchState) {
+      const box = document.createElement('div');
+      box.className = 'guide-wiki-result';
+      if (wikiSearchState.found) {
+        const p = document.createElement('p');
+        p.textContent = 'Encontramos «' + wikiSearchState.pageTitle + '» en StrategyWiki.';
+        const dl = document.createElement('button');
+        dl.type = 'button';
+        dl.className = 'button small primary';
+        dl.textContent = 'Descargar para leer sin conexión';
+        dl.onclick = async () => {
+          dl.disabled = true;
+          dl.textContent = 'Descargando…';
+          try {
+            await request(
+              guideUrl(game.key) + '/strategywiki/download',
+              jsonRequest('POST', { pageTitle: wikiSearchState.pageTitle })
+            );
+            wikiSearchState = null;
+            await loadGuideSummary();
+            await reloadTab();
+            notify('Guía descargada de StrategyWiki.', { type: 'success' });
+          } catch (error) {
+            dl.disabled = false;
+            dl.textContent = 'Descargar para leer sin conexión';
+            notifyError(error);
+          }
+        };
+        box.append(p, dl);
+      } else {
+        const p = document.createElement('p');
+        p.className = 'helper-text';
+        p.textContent =
+          'No encontramos una guía para este juego en StrategyWiki. Podés importar un archivo propio o usar los enlaces de abajo.';
+        box.append(p);
+      }
+      offlineCard.append(box);
+    }
+
+    if (!data.activeGuide || !data.activeGuide.sections?.length) return;
+
+    const sections = data.activeGuide.sections;
+    const searchRow = document.createElement('div');
+    searchRow.className = 'guide-search-row';
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.value = searchQuery;
+    searchInput.placeholder = 'Buscar dentro de esta guía…';
+    searchInput.setAttribute('aria-label', 'Buscar dentro de la guía');
+    const searchCount = document.createElement('span');
+    searchCount.className = 'helper-text';
+    searchRow.append(searchInput, searchCount);
+    offlineCard.append(searchRow);
+
+    const reader = document.createElement('div');
+    reader.className = 'guide-reader';
+    const toc = document.createElement('nav');
+    toc.className = 'guide-toc';
+    toc.setAttribute('aria-label', 'Índice de tramos');
+    const bodyPane = document.createElement('div');
+    bodyPane.className = 'guide-solution';
+    reader.append(toc, bodyPane);
+    offlineCard.append(reader);
+
+    const renderReaderContent = () => {
+      toc.replaceChildren();
+      bodyPane.replaceChildren();
+
+      const hasFuture = sections.some((s) => s.isFuture);
+      if (hasFuture) {
+        const toggleLabel = document.createElement('label');
+        toggleLabel.className = 'guide-future-toggle';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = data.progress.showFutureTitles === true;
+        cb.onchange = async () => {
+          try {
+            await request(guideUrl(game.key) + '/progress', jsonRequest('PUT', { showFutureTitles: cb.checked }));
+            await reloadTab(selectedSectionId);
+          } catch (error) {
+            cb.checked = !cb.checked;
+            notifyError(error);
+          }
+        };
+        const span = document.createElement('span');
+        span.textContent = 'Mostrar títulos futuros';
+        toggleLabel.append(cb, span);
+        toc.append(toggleLabel);
+      }
+
+      const tocList = document.createElement('div');
+      tocList.className = 'guide-toc-list';
+      let totalMatches = 0;
+
+      sections.forEach((sec) => {
+        const matches = !sec.locked ? countOccurrences(sec.solution, searchQuery) : 0;
+        totalMatches += matches;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className =
+          'guide-toc-item' +
+          (sec.id === selectedSectionId ? ' active' : '') +
+          (sec.id === data.progress.currentSectionId ? ' current' : '') +
+          (sec.locked ? ' locked' : '');
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = sec.displayTitle;
+        btn.append(labelSpan);
+        if (sec.id === data.progress.currentSectionId) {
+          const here = document.createElement('small');
+          here.className = 'guide-badge';
+          here.textContent = 'Acá estoy';
+          btn.append(here);
+        } else if (matches > 0) {
+          const hit = document.createElement('small');
+          hit.className = 'guide-badge';
+          hit.textContent = String(matches);
+          btn.append(hit);
+        } else if (sec.locked) {
+          const lock = document.createElement('small');
+          lock.textContent = 'Oculto';
+          btn.append(lock);
+        }
+        btn.onclick = () => {
+          selectedSectionId = sec.id;
+          renderReaderContent();
+        };
+        tocList.append(btn);
+      });
+      toc.append(tocList);
+
+      searchCount.textContent =
+        searchQuery.trim().length >= 2 ? (totalMatches === 1 ? '1 coincidencia' : totalMatches + ' coincidencias') : '';
+
+      const currentIndex = Math.max(
+        0,
+        sections.findIndex((s) => s.id === selectedSectionId)
+      );
+      const sec = sections[currentIndex];
+      if (!sec) return;
+
+      const secHead = document.createElement('div');
+      secHead.className = 'guide-solution-head';
+      const secTitle = document.createElement('h4');
+      secTitle.textContent = sec.displayTitle;
+      const secActions = document.createElement('div');
+      secActions.className = 'guide-solution-actions';
+
+      if (sec.id !== data.progress.currentSectionId && !sec.locked) {
+        const markBtn = document.createElement('button');
+        markBtn.type = 'button';
+        markBtn.className = 'button small';
+        markBtn.textContent = 'Marcar «Acá estoy» aquí';
+        markBtn.onclick = async () => {
+          markBtn.disabled = true;
+          try {
+            await request(guideUrl(game.key) + '/progress', jsonRequest('PUT', { currentSectionId: sec.id }));
+            await reloadTab(sec.id);
+            notify('Tramo actual guardado: ' + sec.displayTitle, { type: 'success' });
+          } catch (error) {
+            markBtn.disabled = false;
+            notifyError(error);
+          }
+        };
+        secActions.append(markBtn);
+      }
+
+      if (!sec.locked) {
+        const renameBtn = document.createElement('button');
+        renameBtn.type = 'button';
+        renameBtn.className = 'text-button';
+        renameBtn.textContent = 'Renombrar';
+        renameBtn.onclick = () => {
+          const form = document.createElement('form');
+          form.className = 'guide-rename-form';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.maxLength = 120;
+          input.value = sec.displayTitle;
+          input.setAttribute('aria-label', 'Nuevo título del tramo');
+          const save = document.createElement('button');
+          save.type = 'submit';
+          save.className = 'button small primary';
+          save.textContent = 'Guardar';
+          const cancel = document.createElement('button');
+          cancel.type = 'button';
+          cancel.className = 'button small';
+          cancel.textContent = 'Cancelar';
+          cancel.onclick = () => renderReaderContent();
+          form.append(input, save, cancel);
+          form.onsubmit = async (event) => {
+            event.preventDefault();
+            try {
+              await request(
+                guideUrl(game.key) +
+                  '/items/' +
+                  encodeURIComponent(data.activeGuide.id) +
+                  '/sections/' +
+                  encodeURIComponent(sec.id),
+                jsonRequest('PUT', { title: input.value })
+              );
+              await reloadTab(sec.id);
+            } catch (error) {
+              notifyError(error);
+            }
+          };
+          secHead.replaceWith(form);
+          input.focus();
+        };
+        secActions.append(renameBtn);
+
+        if (currentIndex > 0 && !sections[currentIndex - 1].locked) {
+          const mergeBtn = document.createElement('button');
+          mergeBtn.type = 'button';
+          mergeBtn.className = 'text-button';
+          mergeBtn.textContent = 'Unir con anterior';
+          mergeBtn.onclick = async () => {
+            mergeBtn.disabled = true;
+            try {
+              await request(
+                guideUrl(game.key) +
+                  '/items/' +
+                  encodeURIComponent(data.activeGuide.id) +
+                  '/sections/' +
+                  encodeURIComponent(sec.id),
+                jsonRequest('PUT', { mergeWithPrevious: true })
+              );
+              await reloadTab(sections[currentIndex - 1].id);
+            } catch (error) {
+              mergeBtn.disabled = false;
+              notifyError(error);
+            }
+          };
+          secActions.append(mergeBtn);
+        }
+      }
+
+      secHead.append(secTitle, secActions);
+      bodyPane.append(secHead);
+
+      if (sec.locked) {
+        const gate = document.createElement('div');
+        gate.className = 'guide-spoiler-gate';
+        const blur = document.createElement('div');
+        blur.className = 'guide-blurred';
+        blur.setAttribute('aria-hidden', 'true');
+        blur.innerHTML =
+          '<p>Contenido posterior protegido para evitar spoilers de tu partida.</p><p>Marcá «Acá estoy» al avanzar o revelá este tramo manualmente.</p>';
+        const prompt = document.createElement('div');
+        prompt.className = 'guide-spoiler-prompt';
+        const msg = document.createElement('p');
+        msg.textContent = 'Este tramo viene después de donde estás marcado («Acá estoy»). ¿Querés verlo igual?';
+        const revealBtn = document.createElement('button');
+        revealBtn.type = 'button';
+        revealBtn.className = 'button small primary';
+        revealBtn.textContent = 'Ver este tramo';
+        revealBtn.onclick = async () => {
+          revealBtn.disabled = true;
+          try {
+            await request(guideUrl(game.key) + '/progress', jsonRequest('PUT', { revealSectionId: sec.id }));
+            await reloadTab(sec.id);
+          } catch (error) {
+            revealBtn.disabled = false;
+            notifyError(error);
+          }
+        };
+        const alwaysLabel = document.createElement('label');
+        alwaysLabel.className = 'guide-future-toggle';
+        const alwaysCb = document.createElement('input');
+        alwaysCb.type = 'checkbox';
+        alwaysCb.checked = data.progress.skipSpoilerConfirm === true;
+        alwaysCb.onchange = async () => {
+          try {
+            await request(
+              guideUrl(game.key) + '/progress',
+              jsonRequest('PUT', { skipSpoilerConfirm: alwaysCb.checked })
+            );
+            await reloadTab(sec.id);
+          } catch (error) {
+            alwaysCb.checked = !alwaysCb.checked;
+            notifyError(error);
+          }
+        };
+        const alwaysText = document.createElement('span');
+        alwaysText.textContent = 'No volver a preguntar en este juego';
+        alwaysLabel.append(alwaysCb, alwaysText);
+        prompt.append(msg, revealBtn, alwaysLabel);
+        gate.append(blur, prompt);
+        bodyPane.append(gate);
+      } else {
+        const mdBody = document.createElement('div');
+        mdBody.className = 'guide-solution-body';
+        renderSafeMarkdown(mdBody, sec.solution, searchQuery);
+        bodyPane.append(mdBody);
+      }
+
+      const navFooter = document.createElement('div');
+      navFooter.className = 'guide-solution-nav';
+      const prevBtn = document.createElement('button');
+      prevBtn.type = 'button';
+      prevBtn.className = 'button small';
+      prevBtn.textContent = 'Tramo anterior';
+      prevBtn.disabled = currentIndex === 0;
+      prevBtn.onclick = () => {
+        selectedSectionId = sections[currentIndex - 1].id;
+        renderReaderContent();
+      };
+      const nextBtn = document.createElement('button');
+      nextBtn.type = 'button';
+      nextBtn.className = 'button small';
+      nextBtn.textContent = 'Tramo siguiente';
+      nextBtn.disabled = currentIndex >= sections.length - 1;
+      nextBtn.onclick = () => {
+        selectedSectionId = sections[currentIndex + 1].id;
+        renderReaderContent();
+      };
+      navFooter.append(prevBtn, nextBtn);
+      bodyPane.append(navFooter);
+
+      const attribution = document.createElement('p');
+      attribution.className = 'guide-attribution';
+      const src = data.activeGuide.source || {};
+      if (src.type === 'strategywiki') {
+        const rev = src.revision ? ' · Revisión ' + src.revision : '';
+        attribution.append(
+          document.createTextNode(
+            'Fuente: StrategyWiki (' +
+              (src.authors || 'Colaboradores de StrategyWiki') +
+              ') · Licencia ' +
+              (src.license || 'CC BY-SA 4.0') +
+              rev +
+              ' · '
+          )
+        );
+        if (src.url) {
+          const link = document.createElement('a');
+          link.href = src.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Ver original';
+          attribution.append(link);
+        }
+      } else {
+        attribution.textContent =
+          'Fuente: archivo propio (' + (src.filename || 'local') + ') · Uso personal (se queda en esta PC).';
+      }
+      bodyPane.append(attribution);
+    };
+
+    searchInput.oninput = () => {
+      searchQuery = searchInput.value;
+      renderReaderContent();
+    };
+
+    renderReaderContent();
+  }
+
+  // ── 2. Cabecera y «Acá estoy» manual ──
   const progressCard = document.createElement('section');
   progressCard.className = 'guide-card guide-progress-card';
   const progressHead = document.createElement('div');
@@ -269,7 +983,8 @@ export async function loadGuideTab(panel, game) {
       if (!noteSectionInput.value.trim() && data.progress.currentSection) {
         noteSectionInput.value = data.progress.currentSection;
       }
-      renderNotes();
+      if (!data.progress.currentSection && data.activeGuide) await reloadTab(selectedSectionId);
+      else renderNotes();
       notify(data.progress.currentSection ? 'Tramo guardado.' : 'Marca de tramo quitada.', { type: 'success' });
     } catch (error) {
       notifyError(error);
@@ -286,11 +1001,11 @@ export async function loadGuideTab(panel, game) {
   sectionForm.append(sectionLabel, sectionInput, saveSectionBtn, clearSectionBtn);
   progressCard.append(sectionForm);
 
-  // ── 2. Fuentes de guía (enlaces directos) ──
+  // ── 3. Fuentes de guía (enlaces directos) ──
   const linksSection = document.createElement('section');
   linksSection.className = 'guide-card';
   linksSection.innerHTML =
-    '<div class="guide-section-head"><h3>Fuentes de guía</h3>' +
+    '<div class="guide-section-head"><h3>Otras fuentes</h3>' +
     '<p class="helper-text">Enlaces directos: Viciódromo no copia guías con derechos reservados.</p></div>' +
     '<ul class="guide-links"></ul>';
   const linksList = linksSection.querySelector('.guide-links');
@@ -359,9 +1074,8 @@ export async function loadGuideTab(panel, game) {
       linksList.append(item);
     });
   }
-  renderLinks();
 
-  // ── 3. Notas de partida por tramo ──
+  // ── 4. Notas de partida por tramo ──
   const notesSection = document.createElement('section');
   notesSection.className = 'guide-card';
   notesSection.innerHTML =
@@ -600,9 +1314,12 @@ export async function loadGuideTab(panel, game) {
       notesList.append(card);
     });
   }
+
+  renderOfflineSection();
+  renderLinks();
   renderNotes();
   notesSection.append(noteForm, notesList);
 
-  root.append(progressCard, linksSection, notesSection);
+  root.append(offlineCard, progressCard, linksSection, notesSection);
   panel.replaceChildren(root);
 }

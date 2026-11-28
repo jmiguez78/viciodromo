@@ -199,9 +199,9 @@ Instalador para Windows junto al portable; la versión instalada descarga e inst
 
 Mando sólo con la ventana en foco y opción de horas jugadas (`0.39.0`), cada juego en su monitor (`0.40.0`) y Novedades de los juegos que seguís en cuatro fases (`0.41.0`–`0.44.0`).
 
-## 0.45.0 — Guías de pistas y soluciones, fase 1 · Completada
+## 0.45.0 a 0.46.0 — Guías de pistas y soluciones, fases 1 y 2 · Completada
 
-Pestaña **Guía** en la ficha de cada juego con enlaces armados (GameFAQs, Guías de Steam, StrategyWiki, YouTube, IGN) en visor auxiliar aislado o navegador, marca «Acá estoy», notas de partida por tramo con capturas adjuntas y **Jugar con la guía** en el monitor acompañante (ver [plan de guías](plan-guias.md)).
+Pestaña **Guía** con enlaces armados en visor auxiliar aislado, «Acá estoy», notas con capturas y **Jugar con la guía** (`0.45.0`); guías sin conexión desde **StrategyWiki** (CC BY-SA) e importación nativa de `.txt`, `.md` y `.html`, lector por tramos con búsqueda y antispoiler, filtro **Con guía** y consulta en la búsqueda nocturna (`0.46.0`, ver [plan de guías](plan-guias.md)).
 
 ## Próximo
 

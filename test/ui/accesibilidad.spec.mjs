@@ -107,7 +107,49 @@ for (const theme of ['dark', 'light']) {
                     kind: 'link'
                   }
                 ],
-                progress: { currentSection: 'Capítulo 4', mode: 'hints', lastUrl: null, updatedAt: null },
+                progress: {
+                  currentSection: 'Capítulo 4',
+                  currentSectionId: 's01',
+                  activeGuideId: 'file-a11y',
+                  mode: 'hints',
+                  lastUrl: null,
+                  showFutureTitles: false,
+                  skipSpoilerConfirm: false,
+                  revealedSections: [],
+                  updatedAt: null
+                },
+                guides: [
+                  {
+                    id: 'file-a11y',
+                    gameKey: 'steam:900000',
+                    title: 'Guía de prueba',
+                    source: { type: 'file', filename: 'guia.txt', license: 'Uso personal' }
+                  }
+                ],
+                activeGuide: {
+                  id: 'file-a11y',
+                  gameKey: 'steam:900000',
+                  title: 'Guía de prueba',
+                  source: { type: 'file', filename: 'guia.txt', license: 'Uso personal' },
+                  sections: [
+                    {
+                      id: 's01',
+                      order: 1,
+                      displayTitle: 'Capítulo 4',
+                      solution: 'Buscá la **llave** en el cofre.',
+                      isFuture: false,
+                      locked: false
+                    },
+                    {
+                      id: 's02',
+                      order: 2,
+                      displayTitle: 'Tramo 2',
+                      solution: '',
+                      isFuture: true,
+                      locked: true
+                    }
+                  ]
+                },
                 notes: [
                   {
                     id: 'n-test',

@@ -78,6 +78,13 @@ async function runScan() {
   } catch (error) {
     log('warn', 'tarea', `Novedades: ${error.message}`);
   }
+  // Disponibilidad de guías libres en StrategyWiki (ver guides.mjs), sólo consulta si existen.
+  try {
+    const { nightlyGuides } = await import('./guides.mjs');
+    await nightlyGuides(app.getPath('userData'), log);
+  } catch (error) {
+    log('warn', 'tarea', `Guías: ${error.message}`);
+  }
   const { flushLog } = await import('./log.mjs');
   await flushLog();
   app.quit();

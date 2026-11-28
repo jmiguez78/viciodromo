@@ -6,6 +6,7 @@ import {
   discoverFeeds,
   looksLikeFeed,
   parseFeed,
+  parseGdelt,
   parseSteamNews,
   plainText,
   pressMatcher,
@@ -142,6 +143,7 @@ test('classify reconoce actualizaciones, contenido, eventos, ofertas y anuncios'
   assert.equal(classify({ title: 'Release date revealed' }), 'announcement');
   assert.equal(classify({ title: 'Lo que sea' }, 'press'), 'press');
   assert.equal(classify({ title: 'Lo que sea' }, 'local'), 'update');
+  assert.equal(classify({ title: 'Patch 1.2 is out' }, 'community'), 'community');
 });
 
 test('pressMatcher pide el nombre del juego y, si es ambiguo, también el estudio', () => {
@@ -158,4 +160,32 @@ test('pressMatcher pide el nombre del juego y, si es ambiguo, también el estudi
   assert.equal(pressMatcher({ names: ['Prey'] })({ title: 'Prey vuelve' }), false);
   // Palabras completas: «Anno 1800» no coincide con «Anno 18000».
   assert.equal(pressMatcher({ names: ['Anno 1800'] })({ title: 'Anno 18000 es mentira' }), false);
+});
+
+test('parseGdelt lee los artículos del buscador abierto con su fecha, imagen y medio', () => {
+  const items = parseGdelt({
+    articles: [
+      {
+        url: 'https://www.diario.example/nota',
+        title: 'Hollow Knight &amp; Silksong',
+        seendate: '20261128T153000Z',
+        domain: 'www.diario.example',
+        socialimage: 'http://inseguro.example/x.jpg'
+      },
+      { url: 'javascript:alert(1)', title: 'Mala', seendate: '20261128T153000Z' },
+      { url: 'https://sin-fecha.example', title: 'Sin fecha' }
+    ]
+  });
+  assert.deepEqual(items, [
+    {
+      id: 'https://www.diario.example/nota',
+      title: 'Hollow Knight & Silksong',
+      url: 'https://www.diario.example/nota',
+      date: '2026-11-28T15:30:00.000Z',
+      text: '',
+      image: null,
+      source: 'diario.example'
+    }
+  ]);
+  assert.deepEqual(parseGdelt({}), []);
 });

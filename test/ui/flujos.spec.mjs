@@ -239,6 +239,7 @@ test('novedades: seguir un juego desde la ficha, elegir qué entra, silenciarlo 
   await expect(page.locator('#news-settings [data-press=vandal]')).toBeChecked();
   await expect(page.locator('#news-settings [data-press=pcgamer]')).not.toBeChecked();
   await expect(page.locator('#news-settings [data-setting=offers]')).not.toBeChecked();
+  await expect(page.locator('#news-settings [data-setting=mameReleases]')).toBeChecked();
   // Dejar de seguir.
   await openGame(page, 'steam:900006');
   await page.locator('#game-page [role=tab]', { hasText: 'Novedades' }).click();

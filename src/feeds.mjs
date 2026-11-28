@@ -215,11 +215,13 @@ export const TYPES = {
   announcement: 'Anuncio',
   event: 'Evento',
   press: 'Prensa',
+  community: 'Comunidad',
   offer: 'Oferta'
 };
 export function classify({ title = '', text = '', tags = [] }, layer = 'official') {
   if (layer === 'local') return 'update';
   if (layer === 'press') return 'press';
+  if (layer === 'community') return 'community';
   if (tags.includes('patchnotes')) return 'update';
   const haystack = (title + ' ' + text.slice(0, 300)).toLowerCase();
   return RULES.find(([, rule]) => rule.test(haystack))?.[0] ?? 'announcement';
@@ -262,3 +264,22 @@ export function pressMatcher({ names = [], studios = [] }) {
 
 // Misma historia, distinto medio: títulos que normalizados quedan iguales.
 export const titleKey = (title) => normalizeText(title).trim();
+
+// Buscador abierto de noticias (GDELT DOC 2.0, modo ArtList): [{ id, title, url, date, text, image, source }].
+export function parseGdelt(json) {
+  return (json?.articles ?? [])
+    .map((article) => {
+      const seen = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(String(article?.seendate ?? ''));
+      const url = safeUrl(article?.url);
+      return {
+        id: url,
+        title: plainText(article?.title, 200),
+        url,
+        date: seen ? `${seen[1]}-${seen[2]}-${seen[3]}T${seen[4]}:${seen[5]}:${seen[6]}.000Z` : null,
+        text: '',
+        image: httpsImage(article?.socialimage),
+        source: String(article?.domain ?? '').replace(/^www\./, '') || 'Prensa'
+      };
+    })
+    .filter((item) => item.title && item.url && item.date);
+}

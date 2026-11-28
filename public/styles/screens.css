@@ -2828,3 +2828,18 @@ a.meta-source {
   height: 18px;
   accent-color: var(--accent);
 }
+
+/* ── Novedades, fase 3: comunidad ── */
+.news-type[data-type='community']::before {
+  background: var(--retro-aqua);
+}
+button.news-card {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+strong.news-game {
+  color: var(--ink-soft);
+  font-size: 12px;
+}

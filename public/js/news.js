@@ -12,12 +12,13 @@ const TYPES = {
   announcement: 'Anuncio',
   event: 'Evento',
   press: 'Prensa',
+  community: 'Comunidad',
   offer: 'Oferta'
 };
 const MODES = [
   ['official', 'Solo oficial', 'Lo que publica el estudio: Steam, su sitio, Bluesky y YouTube.'],
   ['press', 'Oficial y prensa', 'Además, las notas de los medios elegidos que nombran el juego.'],
-  ['all', 'Todo', 'También las ofertas.']
+  ['all', 'Todo', 'También las ofertas, lo más votado del subreddit y el buscador abierto de noticias (GDELT).']
 ];
 const STATUS = {
   ok: '',
@@ -29,8 +30,9 @@ const KIND_HELP = {
   site: 'El blog o las noticias del sitio oficial.',
   bluesky: 'Lo que publica la cuenta del estudio.',
   youtube: 'Tráilers y videos del canal del estudio.',
+  reddit: 'Lo más votado de la semana en el subreddit. Entra con «Todo».',
   feed: 'Un feed que agregaste a mano.',
-  local: 'Avisa cuando Steam instala una versión nueva en esta PC.'
+  local: 'Avisa cuando la tienda instala una versión nueva en esta PC.'
 };
 
 let summary = { follows: new Set(), muted: new Set(), unread: {}, refreshedAt: null };
@@ -219,16 +221,18 @@ function itemCard(item, { withGame = false, onHide } = {}) {
   type.dataset.type = item.type;
   meta.append(type);
   if (item.unread) meta.append(el('span', 'news-new', 'Nueva'));
-  if (withGame && item.game) {
+  // El nombre del juego abre su página; MAME (que no es un juego) va como texto.
+  if (withGame && item.game && gameByKey(item.game.key)) {
     const game = el('button', 'text-button news-game', item.game.name);
     game.type = 'button';
     game.setAttribute('aria-label', 'Abrir la página de ' + item.game.name);
     game.onclick = () => window.GML?.openGamePage?.(gameByKey(item.game.key));
     meta.append(game);
-  }
+  } else if (withGame && item.game) meta.append(el('strong', 'news-game', item.game.name));
   meta.append(el('span', '', item.sourceLabel + ' · ' + dateText(item.date)));
   const title = el('h4', 'news-title');
-  title.append(externalLink(item.title, item.url));
+  // Las novedades locales de Epic y Xbox no tienen nota que abrir.
+  title.append(item.url ? externalLink(item.title, item.url) : document.createTextNode(item.title));
   content.append(meta, title);
   if (item.text && item.text !== item.title) content.append(el('p', 'news-excerpt', item.text));
   const actions = el('div', 'news-actions');
@@ -606,7 +610,14 @@ export async function renderNewsShelf(host, visible = true) {
   host.querySelector('[data-news-all]').onclick = () => window.GML?.showPage?.('news');
   const track = host.querySelector('.news-track');
   for (const item of recent.items) {
-    const card = externalLink('', item.url, 'news-card' + (item.unread ? ' unread' : ''));
+    const target = gameByKey(item.game.key);
+    let card;
+    if (item.url) card = externalLink('', item.url, 'news-card' + (item.unread ? ' unread' : ''));
+    else {
+      card = el('button', 'news-card' + (item.unread ? ' unread' : ''));
+      card.type = 'button';
+      card.onclick = () => target && window.GML?.openGamePage?.(target);
+    }
     card.setAttribute('aria-label', item.game.name + ': ' + item.title + ' (' + item.sourceLabel + ')');
     const art = el('span', 'news-card-art');
     if (item.image) {
@@ -676,7 +687,8 @@ export async function loadNewsSettings() {
   }
   for (const [key, text] of [
     ['offers', 'Mostrar ofertas y descuentos'],
-    ['autoFollow', 'Seguir solos los juegos que abrís (los del último mes)']
+    ['autoFollow', 'Seguir solos los juegos que abrís (los del último mes)'],
+    ['mameReleases', 'Avisar cuando sale una versión nueva de MAME']
   ]) {
     const label = el('label', 'switch');
     const box = document.createElement('input');

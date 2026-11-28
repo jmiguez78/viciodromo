@@ -372,6 +372,8 @@ const news = createNews({
   games: async () => (await library()).games,
   offline,
   log,
+  // Para avisar versiones nuevas de MAME: la del MAME principal configurado.
+  mameVersion: async () => (await arcade.info()).version,
   onChange: (summary) => tasks.emit('news', summary)
 });
 function onlineSources(game, meta, kind) {

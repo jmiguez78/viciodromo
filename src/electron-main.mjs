@@ -70,7 +70,9 @@ async function runScan() {
   // Novedades de los juegos que seguís (ver news.mjs), con el inventario recién buscado.
   try {
     const { nightlyNews } = await import('./news.mjs');
-    await nightlyNews(app.getPath('userData'), log);
+    const { createArcade } = await import('./mame.mjs');
+    const arcade = createArcade(app.getPath('userData'), { slot: 'main' });
+    await nightlyNews(app.getPath('userData'), log, { mameVersion: async () => (await arcade.info()).version });
   } catch (error) {
     log('warn', 'tarea', `Novedades: ${error.message}`);
   }

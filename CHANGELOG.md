@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 0.44.0
+
+**Novedades, cuarta parte: IGDB, avisos de Windows y traducción con IA.**
+
+- **IGDB completa los canales.** Si tenés IGDB conectado, los sitios de la ficha del juego (sitio oficial, Steam, subreddit, YouTube, Bluesky) se suman a las fuentes cuando Wikidata no los tiene, y sus estudios ayudan a filtrar la prensa. Sirve sobre todo para juegos chicos o de nicho.
+- **Avisos de Windows.** Nueva opción en **Configuración → Novedades**: cuando una consulta trae novedades y Viciódromo no está a la vista, Windows muestra un aviso («Le Mans Ultimate: Update 1.4.4» o «5 novedades nuevas de …»). Al tocarlo se abre la sección Novedades. Viene apagada.
+- **Traducir con IA (opcional).** Con tu propia clave de API de Anthropic (se guarda cifrada en esta PC), las novedades en inglés muestran **Traducir**: título en español y un resumen de una o dos oraciones, con **Ver original**. Sólo se envían el título y el extracto de la novedad que traducís, y la traducción queda guardada.
+
 ## 0.43.0
 
 **Novedades, tercera parte: comunidad, buscador abierto, más tiendas y MAME.**

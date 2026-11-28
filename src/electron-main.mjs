@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, nativeTheme, screen, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, Notification, screen, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -236,6 +236,24 @@ const callbacks = {
     const exe = process.env.PORTABLE_EXECUTABLE_FILE;
     app.relaunch(exe ? { execPath: exe, args: [] } : undefined);
     app.exit(0);
+  },
+  // Novedades nuevas (ver news.mjs): con «Avisos de Windows» activado y la ventana sin foco, un aviso; al tocarlo se
+  // abre la sección Novedades.
+  onNews: async (result) => {
+    if (!result.notify || !Notification.isSupported() || window?.isFocused()) return;
+    const { notificationText } = await import('./news.mjs');
+    const body = notificationText(result.fresh);
+    if (!body) return;
+    const notice = new Notification({
+      title: 'Novedades en Viciódromo',
+      body,
+      icon: path.join(root, 'public', 'brand', 'icon-256.png')
+    });
+    notice.on('click', () => {
+      bringBack();
+      window?.webContents.executeJavaScript("window.GML?.showPage?.('news')").catch(() => {});
+    });
+    notice.show();
   },
   onGameExit: () => {
     bringBack();

@@ -35,7 +35,7 @@ const KIND_HELP = {
   local: 'Avisa cuando la tienda instala una versión nueva en esta PC.'
 };
 
-let summary = { follows: new Set(), muted: new Set(), unread: {}, refreshedAt: null };
+let summary = { follows: new Set(), muted: new Set(), unread: {}, ai: false, refreshedAt: null };
 const gameUrl = (key) => '/api/news/game/' + encodeURIComponent(key);
 const json = (method, body) => ({
   method,
@@ -58,6 +58,7 @@ function applySummary(data) {
     follows: new Set(data.follows ?? []),
     muted: new Set(data.muted ?? []),
     unread: data.unread ?? {},
+    ai: Boolean(data.ai),
     refreshedAt: data.refreshedAt ?? null
   };
   paintBadges();
@@ -243,6 +244,15 @@ const externalLink = (text, url, className = '') => {
   return link;
 };
 
+// ¿Está en otro idioma? Más palabras comunes del inglés que del español (alcanza para ofrecer «Traducir»).
+export function looksForeign(item) {
+  const text = ' ' + String((item.title ?? '') + ' ' + (item.text ?? '')).toLowerCase() + ' ';
+  const count = (words) => words.reduce((sum, word) => sum + text.split(' ' + word + ' ').length - 1, 0);
+  const english = count(['the', 'and', 'is', 'are', 'with', 'for', 'now', 'new', 'you', 'your', 'of', 'to', 'in']);
+  const spanish = count(['el', 'la', 'los', 'las', 'de', 'que', 'con', 'para', 'ya', 'en', 'un', 'una', 'y']);
+  return english >= 2 && english > spanish;
+}
+
 // options.withGame: suma el nombre del juego (abre su página). options.onHide: después de ocultarla.
 function itemCard(item, { withGame = false, onHide } = {}) {
   const article = el('article', 'news-item' + (item.unread ? ' unread' : ''));
@@ -274,11 +284,39 @@ function itemCard(item, { withGame = false, onHide } = {}) {
   } else if (withGame && item.game) meta.append(el('strong', 'news-game', item.game.name));
   meta.append(el('span', '', item.sourceLabel + ' · ' + dateText(item.date)));
   const title = el('h4', 'news-title');
+  // Traducida con IA: se muestra en español, con la opción de volver al original.
+  const shown = item.translation && !item.showOriginal ? item.translation : { title: item.title, text: item.text };
   // Las novedades locales de Epic y Xbox no tienen nota que abrir.
-  title.append(item.url ? externalLink(item.title, item.url) : document.createTextNode(item.title));
+  title.append(item.url ? externalLink(shown.title, item.url) : document.createTextNode(shown.title));
   content.append(meta, title);
-  if (item.text && item.text !== item.title) content.append(el('p', 'news-excerpt', item.text));
+  if (shown.text && shown.text !== shown.title) content.append(el('p', 'news-excerpt', shown.text));
   const actions = el('div', 'news-actions');
+  const swap = (next) => article.replaceWith(itemCard(next, { withGame, onHide }));
+  if (item.translation) {
+    const toggle = el('button', 'text-button news-translate', item.showOriginal ? 'Ver traducción' : 'Ver original');
+    toggle.type = 'button';
+    toggle.onclick = () => swap({ ...item, showOriginal: !item.showOriginal });
+    actions.append(toggle);
+  } else if (summary.ai && looksForeign(item)) {
+    const translate = el('button', 'text-button news-translate', 'Traducir');
+    translate.type = 'button';
+    translate.onclick = async () => {
+      const key = item.game?.key ?? article.closest('[data-news-key]')?.dataset.newsKey;
+      translate.disabled = true;
+      translate.textContent = 'Traduciendo…';
+      try {
+        const translation = await request(gameUrl(key) + '/items/' + encodeURIComponent(item.id) + '/translate', {
+          method: 'POST'
+        });
+        swap({ ...item, translation, showOriginal: false });
+      } catch (error) {
+        translate.disabled = false;
+        translate.textContent = 'Traducir';
+        notifyError(error);
+      }
+    };
+    actions.append(translate);
+  }
   // La misma historia en otros medios: «También en Vandal y IGN».
   if (item.also?.length) {
     const also = el('p', 'news-also');
@@ -728,7 +766,8 @@ export async function loadNewsSettings() {
   for (const [key, text] of [
     ['offers', 'Mostrar ofertas y descuentos'],
     ['autoFollow', 'Seguir solos los juegos que abrís (los del último mes)'],
-    ['mameReleases', 'Avisar cuando sale una versión nueva de MAME']
+    ['mameReleases', 'Avisar cuando sale una versión nueva de MAME'],
+    ['notify', 'Avisos de Windows cuando llegan novedades (si Viciódromo no está a la vista)']
   ]) {
     const label = el('label', 'switch');
     const box = document.createElement('input');
@@ -742,6 +781,56 @@ export async function loadNewsSettings() {
     label.append(box, track, el('span', '', text));
     host.append(label);
   }
+  // Traducción con IA: la clave se guarda cifrada en esta PC; nunca vuelve a la interfaz.
+  const ai = el('form', 'news-ai');
+  const field = el('label', 'news-add-label', 'Traducir con IA (Claude): tu clave de API de Anthropic');
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.id = 'news-ai-key';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.placeholder = data.ai ? 'Clave guardada (pegá otra para cambiarla)' : 'sk-ant-…';
+  field.htmlFor = input.id;
+  const store = el('button', 'button', 'Guardar');
+  store.type = 'submit';
+  const help = el(
+    'p',
+    'helper-text',
+    data.ai
+      ? 'Las novedades en inglés muestran «Traducir». Se envían sólo el título y el extracto de la que traducís.'
+      : 'Opcional. Con una clave, las novedades en inglés muestran «Traducir»: se envían sólo el título y el extracto.'
+  );
+  ai.append(field, input, store);
+  if (data.ai) {
+    const remove = el('button', 'text-button', 'Borrar clave');
+    remove.type = 'button';
+    remove.onclick = async () => {
+      try {
+        await request('/api/news/ai', { method: 'DELETE' });
+        await loadSummary();
+        loadNewsSettings();
+        notify('Clave borrada.', { type: 'success' });
+      } catch (error) {
+        notifyError(error);
+      }
+    };
+    ai.append(remove);
+  }
+  ai.append(help);
+  ai.onsubmit = async (event) => {
+    event.preventDefault();
+    store.disabled = true;
+    try {
+      await request('/api/news/ai', json('PUT', { key: input.value }));
+      await loadSummary();
+      loadNewsSettings();
+      notify('Clave guardada: ya podés traducir novedades.', { type: 'success' });
+    } catch (error) {
+      store.disabled = false;
+      notifyError(error);
+    }
+  };
+  host.append(ai);
 }
 
 export function setup() {

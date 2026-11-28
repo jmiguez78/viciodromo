@@ -813,6 +813,7 @@ test('Fase 4: atajos globales, revealNextHint, summary.progress y guide-lan QR',
     // Canje del token de un solo uso -> cookie HttpOnly y redirect
     const pairRes = await fetch(started.url, { redirect: 'manual' });
     assert.equal(pairRes.status, 302);
+    assert.match(pairRes.headers.get('set-cookie') ?? '', /SameSite=Lax/);
     const cookie = pairRes.headers.get('set-cookie')?.split(';')[0];
     assert.match(cookie, /^vicio_guide_sid=/);
 

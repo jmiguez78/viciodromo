@@ -760,12 +760,21 @@ export function createGuideLan({
       state.pairTokenUsed = true;
       state.sessionId = crypto.randomBytes(24).toString('base64url');
       sendSecurityHeaders(res, 'text/html; charset=utf-8');
-      res.setHeader('set-cookie', `${SESSION_COOKIE}=${state.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+      res.setHeader('set-cookie', `${SESSION_COOKIE}=${state.sessionId}; HttpOnly; SameSite=Lax; Path=/`);
       res.writeHead(302, { location: '/' });
       return res.end();
     }
 
     if (!isAuthorized(req)) {
+      // El QR abre Chrome desde otra app (la cámara): por eso la cookie es Lax y no Strict, que no se
+      // mandaría en la redirección de /pair a /. Sin sesión, una página se explica en vez de mostrar JSON.
+      if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+        sendSecurityHeaders(res, 'text/html; charset=utf-8');
+        res.writeHead(403);
+        return res.end(
+          '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><body style="font-family:sans-serif;background:#0d0e14;color:#f4f3f8;padding:24px"><h1>Este celular no está vinculado</h1><p>En Viciódromo, abrí la pestaña Guía del juego, tocá «En el celular (QR)» y escaneá el código nuevo.</p></body></html>'
+        );
+      }
       sendSecurityHeaders(res, 'application/json; charset=utf-8');
       res.writeHead(403);
       return res.end(JSON.stringify({ error: 'Sesión no vinculada. Escaneá el código QR desde Viciódromo.' }));

@@ -61,6 +61,10 @@ export function setup() {
     window.dispatchEvent(new CustomEvent('gml-tasks', { detail: state.tasks }));
   });
   source.addEventListener('library', reloadSoon);
+  // Novedades nuevas o leídas: el punto de las portadas y el botón Seguir (news.js).
+  source.addEventListener('news', (event) => {
+    window.dispatchEvent(new CustomEvent('gml-news', { detail: JSON.parse(event.data) }));
+  });
   // No se pudo llevar un juego al monitor elegido: se abrió donde Windows quiso.
   source.addEventListener('display', (event) => {
     notify(describeDisplayFailure(JSON.parse(event.data)), {

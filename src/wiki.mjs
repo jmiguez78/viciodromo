@@ -3,7 +3,7 @@
 // confirma en Wikidata que sea un videojuego del año correcto y de ahí salen el identificador de IGDB (P5794)
 // y el artículo en español, del que se toma la introducción.
 const USER_AGENT = 'Viciodromo/0.36 (lanzador de juegos para Windows; https://github.com/jmiguez78)';
-const VIDEO_GAME = new Set(['Q7889', 'Q4393107', 'Q865493', 'Q1755420']);
+export const VIDEO_GAME = new Set(['Q7889', 'Q4393107', 'Q865493', 'Q1755420']);
 const MAX_EXTRACT = 1800;
 
 const normalize = (text) =>

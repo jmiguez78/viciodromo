@@ -185,6 +185,49 @@ function refreshOpenTab(game) {
   else if (body) delete body.dataset.loaded;
 }
 
+// ── «Buscar de nuevo» ───────────────────────────────────────────────
+// Mientras dura la consulta el ícono gira y el botón dice «Buscando…» (como mínimo un instante, para que se note
+// aunque responda enseguida); al terminar, un aviso dice qué pasó y el botón vuelve a su estado.
+const MIN_BUSY_MS = 700;
+async function runRefresh(button, task) {
+  if (button.classList.contains('busy')) return null;
+  const label = button.querySelector('.label');
+  button.classList.add('busy');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  if (label) label.textContent = 'Buscando…';
+  const started = Date.now();
+  try {
+    const result = await task();
+    const wait = MIN_BUSY_MS - (Date.now() - started);
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    return result;
+  } finally {
+    button.classList.remove('busy');
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    if (label) label.textContent = 'Buscar de nuevo';
+  }
+}
+// «2 novedades nuevas.», «Sin novedades nuevas: ya tenés lo último.» y, si alguna fuente falló, cuántas.
+export function refreshMessage(result) {
+  const added = result?.added;
+  const failed = result?.failed ?? 0;
+  const text =
+    added == null
+      ? 'Búsqueda terminada.'
+      : added
+        ? plural(added, 'novedad nueva', 'novedades nuevas') + '.'
+        : 'Sin novedades nuevas: ya tenés lo último.';
+  return text + (failed ? ' ' + plural(failed, 'fuente no respondió', 'fuentes no respondieron') + '.' : '');
+}
+function refreshButton() {
+  const button = el('button', 'button');
+  button.type = 'button';
+  button.innerHTML = icon('refresh') + '<span class="label">Buscar de nuevo</span>';
+  return button;
+}
+
 // ── Tarjeta de una novedad (pestaña y sección) ───────────────────────
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -403,19 +446,16 @@ function render(body, game, data, { sourcesOpen = false } = {}) {
         : '')
   );
   status.setAttribute('role', 'status');
-  const again = el('button', 'button');
-  again.type = 'button';
-  again.innerHTML = icon('refresh') + ' Buscar de nuevo';
+  const again = refreshButton();
   again.onclick = async () => {
-    again.disabled = true;
-    again.classList.add('busy');
     try {
-      render(body, game, await request(gameUrl(game.key) + '/refresh', { method: 'POST' }));
+      const next = await runRefresh(again, () => request(gameUrl(game.key) + '/refresh', { method: 'POST' }));
+      if (!next) return;
+      render(body, game, next);
       loadSummary();
+      notify(refreshMessage(next), { type: next.failed ? 'info' : 'success' });
     } catch (error) {
-      again.disabled = false;
-      again.classList.remove('busy');
-      notifyError(error);
+      notifyError(error, () => again.click());
     }
   };
   toolbar.append(status, again);
@@ -728,17 +768,15 @@ export function setup() {
   });
   page?.querySelector('#news-refresh')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
-    button.disabled = true;
-    button.classList.add('busy');
     try {
-      applySummary(await request('/api/news/refresh', { method: 'POST' }));
+      const result = await runRefresh(button, () => request('/api/news/refresh', { method: 'POST' }));
+      if (!result) return;
+      applySummary(result);
       forgetShelf();
       await loadInbox();
+      notify(refreshMessage(result), { type: result.failed ? 'info' : 'success' });
     } catch (error) {
-      notifyError(error);
-    } finally {
-      button.disabled = false;
-      button.classList.remove('busy');
+      notifyError(error, () => button.click());
     }
   });
   // Los cambios del propio punto no cuentan (si no, se pintaría sin fin).

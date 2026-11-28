@@ -192,6 +192,8 @@ test('una consulta posterior suma sólo lo nuevo, lo marca sin leer y avisa si S
   setBuild({ buildid: '101', updatedAt: '2026-11-28T13:00:00.000Z' });
   const summary = await news.refresh();
   assert.deepEqual(summary.unread, { [silksong.key]: 2 });
+  assert.equal(summary.added, 2);
+  assert.equal(summary.failed, 0);
   const data = await news.forGame(silksong.key);
   const fresh = data.items.filter((item) => item.unread);
   assert.deepEqual(

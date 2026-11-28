@@ -234,6 +234,11 @@ test('novedades: seguir un juego desde la ficha, elegir qué entra, silenciarlo 
   await page.locator('.nav-item[data-page=news]').click();
   await expect(page.locator('#news-game option')).toHaveCount(2);
   await expect(page.locator('#news-inbox')).toContainText('Sin novedades en los últimos 60 días');
+  // «Buscar de nuevo» avisa qué pasó al terminar.
+  await page.locator('#news-refresh').click();
+  await expect(page.locator('#toasts')).toContainText('Sin novedades nuevas');
+  await expect(page.locator('#news-refresh')).toHaveText('Buscar de nuevo');
+  await expect(page.locator('#news-refresh')).toBeEnabled();
   // Configuración → Novedades: los medios en español vienen activados; los de inglés, no.
   await page.locator('.nav-item[data-page=settings]').click();
   await expect(page.locator('#news-settings [data-press=vandal]')).toBeChecked();

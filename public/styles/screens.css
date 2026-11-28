@@ -2843,3 +2843,12 @@ strong.news-game {
   color: var(--ink-soft);
   font-size: 12px;
 }
+
+/* «Buscar de nuevo» de Novedades: el ícono gira mientras dura la consulta. */
+.button.busy .icon {
+  animation: spin 1s linear infinite;
+}
+.button.busy:disabled {
+  opacity: 1;
+  cursor: progress;
+}

@@ -41,8 +41,8 @@ export function newsRoutes(router, d) {
   });
   router.delete('/api/news/game/:key/follow', ({ params }) => d.news.unfollow(params.key));
   router.post('/api/news/game/:key/refresh', async ({ params }) => {
-    await d.news.refresh({ only: params.key });
-    return d.news.forGame(params.key);
+    const { added = null, failed = 0 } = await d.news.refresh({ only: params.key });
+    return { ...(await d.news.forGame(params.key)), added, failed };
   });
   router.post('/api/news/game/:key/read', ({ params }) => d.news.markRead(params.key));
   router.put('/api/news/game/:key/mode', async ({ params, body }) => {

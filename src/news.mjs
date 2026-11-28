@@ -694,11 +694,14 @@ export function createNews({
         const press = async () => (pressCache ??= offline ? [] : await fetchPress(settings));
         if (!only && (await autoFollow(store, list, press))) store = await read();
         let added = 0;
+        // Fuentes que no respondieron en esta consulta (para avisarlo al terminar «Buscar de nuevo»).
+        let failed = 0;
         if (!only && !offline && settings.mameReleases) added += await checkMame();
         const keys = Object.keys(store.follows).filter((key) => (only ? key === only : !isMuted(store.follows[key])));
         if (!keys.length) {
-          if (added) onChange(await summary());
-          return summary();
+          const result = { ...(await summary()), added, failed };
+          if (added) onChange(result);
+          return result;
         }
         // Idiomas del buscador abierto: los de los medios elegidos (si no hay ninguno, español).
         const languages = [...new Set(PRESS_FEEDS.filter((feed) => settings.press[feed.id]).map((feed) => feed.lang))];
@@ -726,6 +729,7 @@ export function createNews({
           const { incoming, sources } = offline
             ? { incoming: [], sources: officialSources(follow) }
             : await collect(game, follow, mode === 'official' ? [] : await press(), at, { languages });
+          failed += sources.filter((source) => source.status === 'error' && source.checkedAt === at).length;
           await update(async (current) => {
             if (!current.follows[key]) return current;
             current.follows[key] = { ...current.follows[key], ...follow, mode, sources, checkedAt: at };
@@ -738,7 +742,7 @@ export function createNews({
         }
         await update((current) => ({ ...current, refreshedAt: iso() }));
         if (added) log('info', 'novedades', `${added} novedades nuevas`);
-        const result = await summary();
+        const result = { ...(await summary()), added, failed };
         onChange(result);
         return result;
       } finally {

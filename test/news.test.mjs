@@ -6,6 +6,8 @@ import path from 'node:path';
 import {
   blueskyHandle,
   createNews,
+  igdbSources,
+  notificationText,
   modeOf,
   parseEpicManifest,
   parseMameVersion,
@@ -114,6 +116,8 @@ async function setup(options = {}) {
     pauseMs: 0,
     openSearchMs: 0,
     mameVersion: async () => options.mame ?? null,
+    protect: async (text) => 'cifrado:' + text,
+    unprotect: async (text) => text.replace(/^cifrado:/, ''),
     installedVersion: async (game) => (game.platform === 'Steam' ? build : null)
   });
   return {
@@ -487,4 +491,109 @@ test('los juegos seguidos antes de la 0.43 vuelven a mirar Wikidata para sumar e
   await news.refresh();
   assert.ok(web.calls.some((url) => url.includes('wikidata')));
   assert.ok((await news.forGame(silksong.key)).sources.some((source) => source.kind === 'reddit'));
+});
+
+test('IGDB suma los canales que Wikidata no tiene (y los estudios de la ficha)', () => {
+  const game = {
+    ...anno,
+    meta: {
+      developers: ['Ubisoft Mainz'],
+      websites: [
+        { label: 'Official Website', url: 'https://www.ubisoft.com/anno-1800' },
+        { label: 'Steam', url: 'https://store.steampowered.com/app/916440/Anno_1800/' },
+        { label: 'Reddit', url: 'https://www.reddit.com/r/anno/' },
+        { label: 'YouTube', url: 'https://www.youtube.com/@Anno' },
+        { label: 'Twitter', url: 'https://twitter.com/anno' }
+      ]
+    }
+  };
+  assert.deepEqual(
+    igdbSources(game).map((source) => [source.id, source.appid ?? source.url, Boolean(source.discover)]),
+    [
+      ['site', 'https://www.ubisoft.com/anno-1800', false],
+      ['steam', '916440', false],
+      ['reddit', 'https://www.reddit.com/r/anno/top/.rss?t=week', false],
+      ['youtube', 'https://www.youtube.com/@Anno', true]
+    ]
+  );
+  // Lo de Wikidata va primero; IGDB completa lo que falta.
+  const sources = sourcesFor(game, entity);
+  assert.equal(sources.find((source) => source.id === 'site').url, 'https://www.teamcherry.com.au/');
+  assert.equal(sources.find((source) => source.id === 'youtube').from, undefined);
+  assert.deepEqual(
+    sourcesFor(game, null).map((source) => [source.id, source.from]),
+    [
+      ['site', 'igdb'],
+      ['steam', 'igdb'],
+      ['reddit', 'igdb'],
+      ['youtube', 'igdb']
+    ]
+  );
+});
+
+test('aviso de Windows: qué juegos trajeron novedades en la consulta', async () => {
+  assert.equal(notificationText([]), null);
+  assert.equal(notificationText([{ name: 'Silksong', count: 1, title: 'Patch 1.0.3' }]), 'Silksong: Patch 1.0.3');
+  assert.equal(notificationText([{ name: 'Silksong', count: 3, title: 'x' }]), 'Silksong: 3 novedades nuevas');
+  assert.equal(
+    notificationText([
+      { name: 'A', count: 1 },
+      { name: 'B', count: 2 },
+      { name: 'C', count: 1 },
+      { name: 'D', count: 1 },
+      { name: 'E', count: 1 }
+    ]),
+    '6 novedades nuevas de A, B, C y 2 más'
+  );
+  const { news, web, advance } = await setup();
+  await news.follow(silksong);
+  advance(60 * 60 * 1000);
+  web.pages['bsky.app/profile/teamcherry.bsky.social/rss'] = rss([
+    ['Patch 1.0.3 is live', NOW + 30 * 60 * 1000, 'https://bsky.app/profile/teamcherry.bsky.social/post/3']
+  ]);
+  const result = await news.refresh();
+  assert.deepEqual(result.fresh, [
+    { key: silksong.key, name: 'Hollow Knight: Silksong', count: 1, title: 'Patch 1.0.3 is live' }
+  ]);
+  assert.equal(result.notify, false);
+  await news.saveSettings({ notify: true });
+  assert.equal((await news.settings()).notify, true);
+});
+
+test('traducir con IA: clave cifrada, una consulta por novedad y el resultado guardado', async () => {
+  const { news, web, dataDir } = await setup({
+    pages: {
+      'api.anthropic.com': {
+        content: [
+          { type: 'text', text: '{"title": "El parche 1.0.2 ya está disponible", "summary": "Arregla errores."}' }
+        ]
+      }
+    }
+  });
+  const data = await news.follow(silksong);
+  const item = data.items.find((entry) => entry.title === 'Patch 1.0.2 is live');
+  await assert.rejects(news.translate(silksong.key, item.id), /clave de Anthropic/);
+  await assert.rejects(news.setAiKey('cualquier cosa'), /sk-ant-/);
+  assert.equal((await news.settings()).ai, false);
+  await news.setAiKey('sk-ant-api03-abcdefghijklmnopqrstuvwxyz');
+  assert.equal((await news.settings()).ai, true);
+  assert.equal((await news.summary()).ai, true);
+  // La clave no queda en claro en news.json.
+  const saved = JSON.parse(await fs.readFile(path.join(dataDir, 'news.json'), 'utf8'));
+  assert.equal(saved.settings.aiKey, 'cifrado:sk-ant-api03-abcdefghijklmnopqrstuvwxyz');
+  const translation = await news.translate(silksong.key, item.id);
+  assert.deepEqual(translation, { title: 'El parche 1.0.2 ya está disponible', text: 'Arregla errores.' });
+  assert.equal(web.calls.filter((url) => url.includes('anthropic')).length, 1);
+  // La segunda vez sale de lo guardado.
+  await news.translate(silksong.key, item.id);
+  assert.equal(web.calls.filter((url) => url.includes('anthropic')).length, 1);
+  assert.deepEqual(
+    (await news.forGame(silksong.key)).items.find((entry) => entry.id === item.id).translation,
+    translation
+  );
+  // Guardar otros ajustes conserva la clave; borrarla la quita.
+  await news.saveSettings({ offers: true });
+  assert.equal((await news.settings()).ai, true);
+  await news.setAiKey(null);
+  assert.equal((await news.settings()).ai, false);
 });

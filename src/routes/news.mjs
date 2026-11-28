@@ -18,7 +18,7 @@ export function newsRoutes(router, d) {
   router.post('/api/news/read-all', () => d.news.markAllRead());
   router.get('/api/news/settings', () => d.news.settings());
   router.put('/api/news/settings', async ({ body }) => {
-    const { press, offers, autoFollow, mameReleases } = await body();
+    const { press, offers, autoFollow, mameReleases, notify } = await body();
     if (press !== undefined && (typeof press !== 'object' || press === null || Array.isArray(press)))
       throw badRequest('Los medios van como { id: true/false }.');
     return d.news.saveSettings({
@@ -29,8 +29,18 @@ export function newsRoutes(router, d) {
       mameReleases:
         mameReleases === undefined
           ? undefined
-          : check.boolean(mameReleases, 'Indicá si se avisan las versiones nuevas de MAME.')
+          : check.boolean(mameReleases, 'Indicá si se avisan las versiones nuevas de MAME.'),
+      notify: notify === undefined ? undefined : check.boolean(notify, 'Indicá si se muestran avisos de Windows.')
     });
+  });
+  router.put('/api/news/ai', async ({ body }) => {
+    const { key } = await body();
+    return d.news.setAiKey(check.string(key, 'Pegá tu clave de API de Anthropic.', { max: 300 }));
+  });
+  router.delete('/api/news/ai', () => d.news.setAiKey(null));
+  router.post('/api/news/game/:key/items/:id/translate', ({ params }) => {
+    if (!ITEM_ID.test(params.id)) throw badRequest('Novedad no válida.');
+    return d.news.translate(params.key, params.id);
   });
   router.get('/api/news/game/:key', ({ params }) => d.news.forGame(params.key));
   router.post('/api/news/game/:key/follow', async ({ params }) => {

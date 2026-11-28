@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createVersionedFile } from './json-file.mjs';
+import { protect as defaultProtect, unprotect as defaultUnprotect } from './secrets.mjs';
 import { VIDEO_GAME } from './wiki.mjs';
 import {
   classify,
@@ -21,7 +22,7 @@ import {
   titleKey
 } from './feeds.mjs';
 
-const USER_AGENT = 'Viciodromo/0.43 (lanzador de juegos para Windows; https://github.com/jmiguez78/viciodromo)';
+const USER_AGENT = 'Viciodromo/0.44 (lanzador de juegos para Windows; https://github.com/jmiguez78/viciodromo)';
 // Medios de prensa. Los de base (en español) vienen activados; el resto se activa en Configuración → Novedades.
 // Cada feed se baja una vez por consulta y se filtra para todos los juegos.
 export const PRESS_FEEDS = [
@@ -40,6 +41,8 @@ export const PRESS_FEEDS = [
 // más votado del subreddit y el buscador abierto de noticias, GDELT).
 export const MODES = ['official', 'press', 'all'];
 const BLUESKY = 'Q78194383';
+// Modelo para traducir y resumir (rápido y económico).
+const AI_MODEL = 'claude-haiku-5-5';
 // Las versiones nuevas de MAME se guardan como si fueran un juego más, con esta clave.
 export const MAME_KEY = 'mame';
 const MAME_NAME = 'MAME (emulador)';
@@ -149,8 +152,70 @@ export function sourcesFor(game, entity) {
       label: 'Reddit (r/' + subreddit + ')',
       url: `https://www.reddit.com/r/${subreddit}/top/.rss?t=week`
     });
+  // Lo que Wikidata no tiene puede venir de IGDB (si está conectado, la ficha del juego ya trae sus sitios).
+  for (const source of igdbSources(game)) add({ ...source, from: 'igdb' });
   if (LOCAL_LABELS[game.platform] && game.location) add({ id: 'local', kind: 'local' });
   return sources;
+}
+
+// IGDB: los sitios de la ficha del juego (game.meta.websites, cuando IGDB está conectado) → fuentes. Sirve para los
+// juegos chicos o de nicho que Wikidata no tiene completos.
+export function igdbSources(game) {
+  const found = [];
+  for (const { label = '', url } of game?.meta?.websites ?? []) {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue;
+    const host = parsed.hostname;
+    const steam = /(^|\.)steampowered\.com$/.test(host) && /^\/app\/(\d+)/.exec(parsed.pathname);
+    const reddit = /(^|\.)reddit\.com$/.test(host) && /^\/r\/([A-Za-z0-9_]{2,21})/.exec(parsed.pathname);
+    const bluesky = host === 'bsky.app' && /^\/profile\/([^/]+)/.exec(parsed.pathname);
+    const youtube = /(^|\.)youtube\.com$/.test(host);
+    const channel = youtube && /^\/channel\/(UC[\w-]{22})/.exec(parsed.pathname);
+    if (steam) found.push({ id: 'steam', kind: 'steam', appid: steam[1] });
+    else if (reddit)
+      found.push({
+        id: 'reddit',
+        kind: 'reddit',
+        label: 'Reddit (r/' + reddit[1] + ')',
+        url: `https://www.reddit.com/r/${reddit[1]}/top/.rss?t=week`
+      });
+    else if (bluesky)
+      found.push({
+        id: 'bluesky',
+        kind: 'bluesky',
+        label: 'Bluesky (@' + decodeURIComponent(bluesky[1]) + ')',
+        url: `https://bsky.app/profile/${bluesky[1]}/rss`
+      });
+    else if (channel)
+      found.push({
+        id: 'youtube',
+        kind: 'youtube',
+        url: `https://www.youtube.com/feeds/videos.xml?channel_id=${channel[1]}`
+      });
+    // Un canal por nombre (@estudio): la página declara su feed y se busca al consultarlo.
+    else if (youtube && /^\/(@[\w.-]+|c\/|user\/)/.test(parsed.pathname))
+      found.push({ id: 'youtube', kind: 'youtube', url: parsed.href, discover: true });
+    else if (/official/i.test(label)) found.push({ id: 'site', kind: 'site', url: parsed.href });
+  }
+  return found;
+}
+
+// Texto del aviso de Windows: «Hollow Knight: Silksong: Patch 1.0.3 is live» o «5 novedades nuevas de A, B y C».
+export function notificationText(fresh = []) {
+  const total = fresh.reduce((sum, item) => sum + item.count, 0);
+  if (!total) return null;
+  if (fresh.length === 1)
+    return fresh[0].count === 1 && fresh[0].title
+      ? `${fresh[0].name}: ${fresh[0].title}`
+      : `${fresh[0].name}: ${fresh[0].count} novedades nuevas`;
+  const names = fresh.map((item) => item.name);
+  const shown = names.length > 3 ? [...names.slice(0, 3), `${names.length - 3} más`] : names;
+  return `${total} novedades nuevas de ${new Intl.ListFormat('es', { type: 'conjunction' }).format(shown)}`;
 }
 
 // Modo de un juego. Antes de la 0.42 la prensa era una fuente más: destildada equivale a «sólo oficial».
@@ -264,7 +329,8 @@ export function settingsOf(store) {
     press,
     offers: saved.offers === true,
     autoFollow: saved.autoFollow === true,
-    mameReleases: saved.mameReleases !== false
+    mameReleases: saved.mameReleases !== false,
+    notify: saved.notify === true
   };
 }
 
@@ -280,6 +346,9 @@ export function createNews({
   // Versión del MAME configurado («0.270 (mame0270)»), para avisar cuando sale una nueva.
   mameVersion = async () => null,
   openSearchMs = OPEN_SEARCH_MS,
+  // Cifrado de la clave de la IA (DPAPI en Windows, ver secrets.mjs).
+  protect = defaultProtect,
+  unprotect = defaultUnprotect,
   onChange = () => {}
 } = {}) {
   const file = createVersionedFile(path.join(dataDir, 'news.json'), {
@@ -387,7 +456,8 @@ export function createNews({
     return {
       wikidata: entity ? id : null,
       names: [...new Set([game.name, game.originalName, ...labelsOf(entity)].filter(Boolean))],
-      studios: [...new Set(studios)],
+      // Los estudios también salen de la ficha de IGDB, si la hay.
+      studios: [...new Set([...studios, ...(game.meta?.developers ?? []), ...(game.meta?.publishers ?? [])])],
       sources: sourcesFor(game, entity)
     };
   }
@@ -411,7 +481,8 @@ export function createNews({
       );
       return parseSteamNews(data);
     }
-    const url = source.kind === 'site' || source.kind === 'feed' ? await siteFeed(source) : source.url;
+    const url =
+      source.kind === 'site' || source.kind === 'feed' || source.discover ? await siteFeed(source) : source.url;
     const page = await get(url);
     if (!looksLikeFeed(page.text)) throw new Error('no es un feed');
     return parseFeed(page.text, page.url).map((item) => ({ ...item, id: source.kind + ':' + hash(item.id) }));
@@ -700,10 +771,16 @@ export function createNews({
         let added = 0;
         // Fuentes que no respondieron en esta consulta (para avisarlo al terminar «Buscar de nuevo»).
         let failed = 0;
-        if (!only && !offline && settings.mameReleases) added += await checkMame();
+        // Juegos con novedades nuevas en esta consulta, para el aviso de Windows.
+        const fresh = [];
+        if (!only && !offline && settings.mameReleases && (await checkMame())) {
+          added += 1;
+          const latest = (await read()).items[MAME_KEY]?.[0];
+          fresh.push({ key: MAME_KEY, name: MAME_NAME, count: 1, title: latest?.title ?? '' });
+        }
         const keys = Object.keys(store.follows).filter((key) => (only ? key === only : !isMuted(store.follows[key])));
         if (!keys.length) {
-          const result = { ...(await summary()), added, failed };
+          const result = { ...(await summary()), added, failed, fresh, notify: settings.notify };
           if (added) onChange(result);
           return result;
         }
@@ -745,13 +822,21 @@ export function createNews({
             const local = await localUpdate(current, game, at);
             // Un juego que todavía no tiene ninguna novedad recibe la primera tanda (las cinco más recientes), aunque
             // sean de antes de seguirlo: pasa si al seguirlo una fuente no respondió.
-            added += merge(current, key, [...incoming, ...local], { initial: !current.items[key]?.length });
+            const count = merge(current, key, [...incoming, ...local], { initial: !current.items[key]?.length });
+            added += count;
+            if (count)
+              fresh.push({
+                key,
+                name: game.name ?? follow.game?.name ?? key,
+                count,
+                title: current.items[key]?.[0]?.title ?? ''
+              });
             return current;
           });
         }
         await update((current) => ({ ...current, refreshedAt: iso() }));
         if (added) log('info', 'novedades', `${added} novedades nuevas`);
-        const result = { ...(await summary()), added, failed };
+        const result = { ...(await summary()), added, failed, fresh, notify: settings.notify };
         onChange(result);
         return result;
       } finally {
@@ -796,6 +881,8 @@ export function createNews({
       follows: Object.keys(store.follows),
       muted: Object.keys(store.follows).filter((key) => isMuted(store.follows[key])),
       unread,
+      // Si hay una clave de IA guardada: la interfaz ofrece «Traducir» en las novedades en inglés.
+      ai: Boolean(store.settings?.aiKey),
       refreshedAt: store.refreshedAt,
       refreshing: Boolean(running)
     };
@@ -933,7 +1020,8 @@ export function createNews({
   }
 
   async function settings() {
-    const current = settingsOf(await read());
+    const store = await read();
+    const current = settingsOf(store);
     return {
       press: PRESS_FEEDS.map(({ id, label, lang, base, url }) => ({
         id,
@@ -945,7 +1033,9 @@ export function createNews({
       })),
       offers: current.offers,
       autoFollow: current.autoFollow,
-      mameReleases: current.mameReleases
+      mameReleases: current.mameReleases,
+      notify: current.notify,
+      ai: Boolean(store.settings?.aiKey)
     };
   }
   async function saveSettings(patch) {
@@ -957,11 +1047,88 @@ export function createNews({
       if (typeof patch.offers === 'boolean') current.offers = patch.offers;
       if (typeof patch.autoFollow === 'boolean') current.autoFollow = patch.autoFollow;
       if (typeof patch.mameReleases === 'boolean') current.mameReleases = patch.mameReleases;
+      if (typeof patch.notify === 'boolean') current.notify = patch.notify;
+      // La clave de la IA se guarda aparte (setAiKey) y se conserva.
+      if (store.settings?.aiKey) current.aiKey = store.settings.aiKey;
       store.settings = current;
       return store;
     });
     onChange(await summary());
     return settings();
+  }
+
+  // ── Traducción con IA (opcional) ──────────────────────────────
+  // Con una clave de Anthropic propia, una novedad en otro idioma se traduce al español (título y un resumen corto).
+  // Sólo viajan el título y el extracto; el resultado queda guardado en la novedad.
+  async function setAiKey(value) {
+    const key = typeof value === 'string' ? value.trim() : '';
+    if (key && !/^sk-ant-[\w-]{20,}$/.test(key))
+      throw Object.assign(new Error('Esa no parece una clave de API de Anthropic (empieza con sk-ant-).'), {
+        status: 400
+      });
+    const saved = key ? await protect(key) : null;
+    await update((store) => {
+      store.settings = { ...settingsOf(store), ...(saved ? { aiKey: saved } : {}) };
+      return store;
+    });
+    onChange(await summary());
+    return settings();
+  }
+
+  async function translate(key, id) {
+    const store = await read();
+    const item = (store.items[key] ?? []).find((entry) => entry.id === id);
+    if (!item) throw Object.assign(new Error('No se encontró la novedad.'), { status: 404 });
+    if (item.translation) return item.translation;
+    if (!store.settings?.aiKey)
+      throw Object.assign(new Error('Cargá tu clave de Anthropic en Configuración → Novedades.'), { status: 409 });
+    if (offline) throw Object.assign(new Error('Sin conexión (modo de prueba).'), { status: 409 });
+    let apiKey;
+    try {
+      apiKey = await unprotect(store.settings.aiKey);
+    } catch {
+      throw Object.assign(new Error('La clave guardada no se puede leer en esta PC: cargala de nuevo.'), {
+        status: 409
+      });
+    }
+    const prompt =
+      'Traducí al español neutro el título de esta novedad de un videojuego y resumí el texto en una o dos ' +
+      'oraciones en español. No agregues información que no esté. Respondé sólo con JSON: ' +
+      '{"title": "...", "summary": "..."}.\n\nTítulo: ' +
+      item.title +
+      '\nTexto: ' +
+      (item.text || '(sin texto)');
+    const response = await fetchImpl('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: AI_MODEL, max_tokens: 400, messages: [{ role: 'user', content: prompt }] }),
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!response.ok)
+      throw Object.assign(
+        new Error(
+          response.status === 401
+            ? 'La clave de Anthropic no es válida.'
+            : `El servicio de IA respondió ${response.status}.`
+        ),
+        { status: 502 }
+      );
+    const data = JSON.parse(await response.text());
+    const text = (data?.content ?? []).find((part) => part?.type === 'text')?.text ?? '';
+    let parsed;
+    try {
+      parsed = JSON.parse(/\{[\s\S]*\}/.exec(text)?.[0] ?? '');
+    } catch {
+      throw Object.assign(new Error('La IA no devolvió una traducción legible.'), { status: 502 });
+    }
+    const translation = { title: plainText(parsed.title, 200), text: plainText(parsed.summary, 600) };
+    if (!translation.title) throw Object.assign(new Error('La IA no devolvió una traducción.'), { status: 502 });
+    await update((current) => {
+      const entry = (current.items[key] ?? []).find((candidate) => candidate.id === id);
+      if (entry) entry.translation = translation;
+      return current;
+    });
+    return translation;
   }
 
   // Una fuente pegada a mano: una ficha de Steam, un perfil de Bluesky, un feed o una página que declare su feed
@@ -1055,6 +1222,8 @@ export function createNews({
     settings,
     saveSettings,
     addSource,
+    translate,
+    setAiKey,
     start: startTimers,
     discover
   };

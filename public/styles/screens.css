@@ -2852,3 +2852,29 @@ strong.news-game {
   opacity: 1;
   cursor: progress;
 }
+
+/* ── Novedades, fase 4: traducción con IA ── */
+.news-ai {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.news-ai .helper-text {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.news-ai input {
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.news-translate {
+  padding: 0;
+  font-size: 12px;
+}

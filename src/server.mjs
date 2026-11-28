@@ -834,6 +834,8 @@ export function createServer({
   listDisplays = () => [],
   // Muestra un número en cada pantalla (Configuración → Monitores → Identificar); sólo en la aplicación de escritorio.
   identifyDisplays = null,
+  // Novedades nuevas tras una consulta (con fresh y notify): la aplicación de escritorio muestra el aviso de Windows.
+  onNews,
   autoUpdate = noAutoUpdate
 } = {}) {
   const router = createRouter();
@@ -1165,8 +1167,9 @@ export function createServer({
     }
   };
   // Una sesión medida o una sincronización de Steam cambian cuáles son los últimos juegos jugados.
-  const unsubscribe = tasks.subscribe((type) => {
+  const unsubscribe = tasks.subscribe((type, data) => {
     if (type === 'library') onLibraryChange?.();
+    if (type === 'news' && data?.fresh?.length) onNews?.(data);
   });
   server.on('close', () => {
     unsubscribe();

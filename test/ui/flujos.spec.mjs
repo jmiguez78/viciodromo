@@ -245,6 +245,11 @@ test('novedades: seguir un juego desde la ficha, elegir qué entra, silenciarlo 
   await expect(page.locator('#news-settings [data-press=pcgamer]')).not.toBeChecked();
   await expect(page.locator('#news-settings [data-setting=offers]')).not.toBeChecked();
   await expect(page.locator('#news-settings [data-setting=mameReleases]')).toBeChecked();
+  await expect(page.locator('#news-settings [data-setting=notify]')).not.toBeChecked();
+  // La clave de la IA se valida antes de guardarla.
+  await page.fill('#news-ai-key', 'no es una clave');
+  await page.locator('.news-ai button[type=submit]').click();
+  await expect(page.locator('#toasts')).toContainText('sk-ant-');
   // Dejar de seguir.
   await openGame(page, 'steam:900006');
   await page.locator('#game-page [role=tab]', { hasText: 'Novedades' }).click();

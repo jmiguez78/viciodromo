@@ -261,3 +261,339 @@ test('novedades: seguir un juego desde la ficha, elegir qué entra, silenciarlo 
   await expect(page.locator('#game-aside [data-action=follow]')).toHaveCount(0);
   await expect(page.locator('#game-page [role=tab]', { hasText: 'Novedades' })).toHaveCount(0);
 });
+
+test('guía fase 1: enlaces, Acá estoy, notas con captura y Jugar con la guía', async ({ page }) => {
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await expect(panel.locator('.guide-link-row')).toHaveCount(5);
+  await expect(panel.locator('.guide-links')).toContainText('GameFAQs');
+  await expect(panel.locator('.guide-links')).toContainText('Guías de Steam');
+
+  // Guardar «Acá estoy» y comprobar persistencia al recargar.
+  await panel.locator('.guide-section-form input').fill('Capítulo 4 · El puente');
+  await panel.locator('.guide-section-form button[type=submit]').click();
+  await expect(panel.locator('.guide-progress-card .helper-text')).toContainText('Capítulo 4 · El puente');
+
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const reloaded = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await expect(reloaded.locator('.guide-section-form input')).toHaveValue('Capítulo 4 · El puente');
+
+  // Crear nota de partida adjuntando una captura real del juego.
+  await reloaded.locator('.guide-note-form textarea').fill('Revisar la palanca roja antes de cruzar.');
+  await reloaded.locator('.guide-note-form button', { hasText: 'Adjuntar captura' }).click();
+  const firstPick = reloaded.locator('.guide-picker-item').first();
+  await expect(firstPick).toBeVisible();
+  await firstPick.click();
+  await expect(reloaded.locator('.guide-selected-chip')).toHaveCount(1);
+  await reloaded.locator('.guide-note-form button[type=submit]').click();
+
+  const note = reloaded.locator('.guide-note-item').first();
+  await expect(note).toContainText('Capítulo 4 · El puente');
+  await expect(note).toContainText('Revisar la palanca roja antes de cruzar.');
+  await expect(note.locator('.guide-capture-thumb')).toHaveCount(1);
+
+  // La miniatura abre la galería ampliada.
+  await note.locator('.guide-capture-thumb').click();
+  await expect(page.locator('#media-viewer img')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Editar nota, borrarla y limpiar el tramo guardado para no afectar otras pruebas.
+  await note.locator('button', { hasText: 'Editar' }).click();
+  await note.locator('.guide-note-edit textarea').fill('Palanca roja activada.');
+  await note.locator('.guide-note-edit button[type=submit]').click();
+  await expect(note).toContainText('Palanca roja activada.');
+  await note.locator('button', { hasText: 'Borrar' }).click();
+  await expect(reloaded.locator('.guide-note-item')).toHaveCount(0);
+  await reloaded.locator('.guide-section-form button', { hasText: 'Limpiar' }).click();
+  await expect(reloaded.locator('.guide-section-form input')).toHaveValue('');
+
+  // Arcade también tiene pestaña Guía (sin Guías de Steam).
+  await openGame(page, 'arcade:laber');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const arcadePanel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await expect(arcadePanel.locator('.guide-link-row')).toHaveCount(4);
+  await expect(arcadePanel.locator('.guide-links')).toContainText('StrategyWiki');
+
+  // Con dos monitores, Jugar ▾ ofrece «Jugar con la guía» en el monitor acompañante.
+  const openCalls = [];
+  await page.route('**/api/displays', (route) =>
+    route.fulfill({
+      json: {
+        supported: true,
+        identify: true,
+        displays: [
+          {
+            id: '1',
+            label: 'Odyssey G5',
+            detected: 'Odyssey G5',
+            alias: '',
+            name: 'Odyssey G5',
+            number: 1,
+            primary: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            games: 0
+          },
+          {
+            id: '2',
+            label: 'LG TV SSCR2',
+            detected: 'LG TV SSCR2',
+            alias: '',
+            name: 'LG TV SSCR2',
+            number: 2,
+            primary: false,
+            x: 1920,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            games: 0
+          }
+        ],
+        known: []
+      }
+    })
+  );
+  await page.route('**/api/guides/game/**/open', async (route) => {
+    openCalls.push(JSON.parse(route.request().postData() || '{}'));
+    await route.fulfill({
+      json: {
+        ok: true,
+        opened: 'viewer',
+        url: 'https://gamefaqs.gamespot.com',
+        display: { id: '2', name: 'LG TV SSCR2' }
+      }
+    });
+  });
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-aside [data-play-menu]').click();
+  const playWithGuide = page.locator('#game-aside [data-play-guide]');
+  await expect(playWithGuide).toContainText('Jugar con la guía');
+  await expect(playWithGuide).toContainText('LG TV SSCR2');
+  const [launchReq] = await Promise.all([page.waitForRequest(/\/api\/launch\//), playWithGuide.click()]);
+  expect(decodeURIComponent(launchReq.url())).toContain('steam:900000');
+  await expect.poll(() => openCalls.length).toBe(1);
+  expect(openCalls[0].inactive).toBe(true);
+  expect(openCalls[0].display?.id).toBe('2');
+});
+
+test('guía fase 2: importar archivo, lectura por tramos, antispoiler y filtro Con guía', async ({ page }) => {
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+
+  const faqText = [
+    'Capítulo 1: El bosque',
+    '======================',
+    'Activá la palanca oculta detrás de la cascada.',
+    '',
+    'Capítulo 2: La torre',
+    '====================',
+    'Subí hasta el último piso con la llave plateada.',
+    '',
+    'Capítulo 3: El jefe final',
+    '=========================',
+    'Esquivá el ataque circular tres veces.'
+  ].join('\n');
+
+  await panel.locator('.guide-offline-card input[type=file]').setInputFiles({
+    name: 'guia-ambar.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(faqText, 'utf8')
+  });
+
+  await expect(panel.locator('.guide-toc-item')).toHaveCount(3);
+  await expect(panel.locator('.guide-attribution')).toContainText('guia-ambar.txt');
+
+  // La primera vez abre en Pistas; pasamos a Solución confirmando para probar el lector completo.
+  await expect(panel.locator('[data-guide-mode=hints]')).toHaveAttribute('aria-pressed', 'true');
+  await panel.locator('[data-guide-mode=solution]').click();
+  await panel.locator('.guide-confirm-inline button', { hasText: 'Ver solución completa' }).click();
+  await expect(panel.locator('[data-guide-mode=solution]')).toHaveAttribute('aria-pressed', 'true');
+
+  // Búsqueda dentro de la guía.
+  await panel.locator('.guide-search-row input[type=search]').fill('palanca');
+  await expect(panel.locator('.guide-search-row')).toContainText('1 coincidencia');
+  await panel.locator('.guide-search-row input[type=search]').fill('');
+
+  // Marcar tramo 1 como «Acá estoy» oculta los tramos futuros.
+  await panel.locator('.guide-solution-actions button', { hasText: 'Marcar «Acá estoy» aquí' }).click();
+  await expect(panel.locator('.guide-toc-item').nth(1)).toContainText('Tramo 2');
+  await expect(panel.locator('.guide-toc-item').nth(1)).toContainText('Oculto');
+
+  // Abrir Tramo 2 muestra la puerta antispoiler y permite revelarlo.
+  await panel.locator('.guide-toc-item').nth(1).click();
+  await expect(panel.locator('.guide-spoiler-gate')).toBeVisible();
+  await panel.locator('.guide-spoiler-gate button', { hasText: 'Ver este tramo' }).click();
+  await expect(panel.locator('.guide-solution-body')).toContainText('llave plateada');
+
+  // Mostrar títulos futuros revela el nombre de Tramo 3 en el índice.
+  await panel.locator('.guide-toc .guide-future-toggle input').check();
+  await expect(panel.locator('.guide-toc-item').nth(2)).toContainText('Capítulo 3: El jefe final');
+
+  // En Biblioteca: insignia de guía en la portada y filtro «Con guía».
+  await show(page, 'library');
+  await expect(page.locator('#library .poster[data-key="steam:900000"] .guide-poster-badge')).toBeVisible();
+  await page.click('#toggle-filters');
+  await page.click('#guides-only');
+  await expect(page.locator('#library .poster')).toHaveCount(1);
+  await expect(page.locator('#active-filters')).toContainText('Con guía');
+  await page.click('#guides-only');
+  await page.click('#toggle-filters');
+
+  // Limpiar guía importada, volver a Pistas y quitar marca de tramo para dejar el fixture intacto.
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  await panel.locator('[data-guide-mode=hints]').click();
+  await expect(panel.locator('[data-guide-mode=hints]')).toHaveAttribute('aria-pressed', 'true');
+  await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
+  await expect(panel.locator('.guide-reader')).toHaveCount(0);
+  await panel.locator('.guide-section-form button', { hasText: 'Limpiar' }).click();
+  await expect(panel.locator('.guide-section-form input')).toHaveValue('');
+});
+
+test('guía fase 3: modo Pistas por defecto, revelado paso a paso, editor manual e IA opcional', async ({ page }) => {
+  await openApp(page);
+  await openGame(page, 'steam:900006');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+
+  await panel.locator('.guide-offline-card input[type=file]').setInputFiles({
+    name: 'pistas-juego.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Sala del reloj\n==============\nGirá la aguja mayor hacia las doce y abrí el cofre.', 'utf8')
+  });
+
+  // Agregar pregunta manual con dos pistas y respuesta.
+  await expect(panel.locator('[data-guide-mode=hints]')).toHaveAttribute('aria-pressed', 'true');
+  await panel.locator('.guide-hints-toolbar button', { hasText: 'Agregar pregunta' }).click();
+  const qForm = panel.locator('.guide-question-form');
+  await qForm.locator('input').nth(0).fill('¿Cómo abro el cofre del reloj?');
+  await qForm.locator('input').nth(1).fill('Mirá las agujas del reloj.');
+  await qForm.locator('input').nth(2).fill('Poné la aguja mayor arriba de todo.');
+  await qForm.locator('textarea').fill('Girá la aguja mayor hacia las doce y abrí el cofre.');
+  await qForm.locator('button[type=submit]').click();
+
+  const card = panel.locator('.guide-question-card').first();
+  await expect(card).toContainText('¿Cómo abro el cofre del reloj?');
+  await expect(card).toContainText('Manual');
+
+  // Revelar pista 1 y pista 2, y comprobar persistencia al recargar.
+  await card.locator('button', { hasText: 'Ver pista 1' }).click();
+  await expect(card.locator('.guide-hint-list li')).toHaveCount(1);
+  await card.locator('button', { hasText: 'Otra pista' }).click();
+  await expect(card.locator('.guide-hint-list li')).toHaveCount(2);
+  await card.locator('button', { hasText: 'Ver la respuesta' }).click();
+  await card.locator('.guide-confirm-inline button', { hasText: 'Mostrar respuesta' }).click();
+  await expect(card.locator('.guide-answer-box')).toContainText('doce');
+
+  await openApp(page);
+  await openGame(page, 'steam:900006');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  await expect(panel.locator('.guide-question-card .guide-answer-box')).toContainText('doce');
+
+  // Editar pregunta manual.
+  await panel.locator('.guide-question-card button', { hasText: 'Editar' }).click();
+  await panel.locator('.guide-question-form input').nth(0).fill('¿Qué hago con el reloj?');
+  await panel.locator('.guide-question-form button[type=submit]').click();
+  await expect(panel.locator('.guide-question-card')).toContainText('¿Qué hago con el reloj?');
+
+  // Limpiar guía importada para dejar el fixture intacto.
+  await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
+  await expect(panel.locator('.guide-reader')).toHaveCount(0);
+});
+
+test('guía fase 4: ventana flotante, QR celular, Continuar y modo sala con mando', async ({ page }) => {
+  await openApp(page);
+  const continueTile = page.locator('#home-shelves .shelf-track[data-shelf="continue"] .poster').first();
+  await expect(continueTile).toBeVisible();
+  const gameKey = await continueTile.getAttribute('data-key');
+
+  await openGame(page, gameKey);
+
+  // Con 1 monitor, Jugar ▾ igualmente ofrece abrir la ventana flotante.
+  await page.locator('#game-aside [data-play-menu]').click();
+  await expect(page.locator('#game-aside [data-play-overlay]')).toContainText('Jugar con ventana flotante');
+  await page.keyboard.press('Escape');
+
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await panel.locator('.guide-offline-card input[type=file]').setInputFiles({
+    name: 'acompanante.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(
+      'Puente norte\n============\nBuscá la llave de bronce debajo de la estatua.\n\nTorre sur\n=========\nSubí por la escalera espiral.',
+      'utf8'
+    )
+  });
+
+  await panel.locator('.guide-hints-toolbar button', { hasText: 'Agregar pregunta' }).click();
+  const qForm = panel.locator('.guide-question-form');
+  await qForm.locator('input').nth(0).fill('¿Dónde está la llave de bronce?');
+  await qForm.locator('input').nth(1).fill('Mirá cerca de la estatua.');
+  await qForm.locator('textarea').fill('Debajo de la estatua.');
+  await qForm.locator('button[type=submit]').click();
+
+  await panel.locator('.guide-question-card button', { hasText: 'Ver pista 1' }).click();
+  // Revelar la pista vuelve a dibujar la pestaña: esperar a que termine antes de tocar «Acá estoy».
+  await expect(panel.locator('.guide-question-card')).toContainText('Mirá cerca de la estatua.');
+  await panel.locator('.guide-section-form input').fill('Puente norte');
+  const savedSection = page.waitForResponse(
+    (res) => res.url().endsWith('/progress') && res.request().method() === 'PUT' && res.ok()
+  );
+  await panel.locator('.guide-section-form button[type=submit]').click();
+  await savedSection;
+  await expect(panel.locator('.guide-section-form input')).toHaveValue('Puente norte');
+
+  // QR para abrir la guía en el celular y apagado posterior.
+  await panel.locator('.guide-companion-actions button', { hasText: 'En el celular (QR)' }).click();
+  await expect(panel.locator('.guide-qr-svg')).toBeVisible();
+  await panel.locator('.guide-qr-info button', { hasText: 'Detener servidor celular' }).click();
+  await expect(panel.locator('.guide-qr-box')).toHaveCount(0);
+
+  // Volver a Inicio y comprobar progreso guardado en la fila Continuar.
+  await show(page, 'home');
+  const updatedTile = page.locator(`#home-shelves .shelf-track[data-shelf="continue"] .poster[data-key="${gameKey}"]`);
+  await expect(updatedTile.locator('.guide-continue-note')).toContainText('Puente norte · 1 pista vista');
+
+  // Ventana flotante dedicada: aviso pantalla completa, opacidad y lectura.
+  await page.goto('/guide-overlay.html?key=' + encodeURIComponent(gameKey));
+  await expect(page.locator('.guide-overlay-notice')).toContainText('ventana sin bordes');
+  await page.locator('.guide-overlay-notice button', { hasText: 'Entendido' }).click();
+  await expect(page.locator('.guide-overlay-notice')).toHaveCount(0);
+  await page.locator('#overlay-opacity').fill('80');
+  await page.locator('#overlay-opacity').dispatchEvent('change');
+  await expect(page.locator('#guide-overlay-app')).toContainText('¿Dónde está la llave de bronce?');
+
+  // Modo sala: abrir guía desde ficha del juego y navegar por tramos.
+  await openApp(page);
+  await page.evaluate(() => GMLGamepad.setBigScreen(true));
+  await page.locator(`.couch-tile[data-key="${gameKey}"]`).first().click();
+  const couchGuideBtn = page.locator('.couch-sheet [data-action="guide"]');
+  await expect(couchGuideBtn).toBeVisible();
+  await couchGuideBtn.click();
+  const dialog = page.locator('#couch-guide-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Puente norte');
+  await page.keyboard.press('PageDown');
+  await expect(dialog).toContainText('Torre sur');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ContextMenu');
+  await page.locator('.couch-menu .couch-action', { hasText: 'Salir del modo sala' }).click();
+
+  // Limpiar guía y marca de tramo del fixture.
+  await openGame(page, gameKey);
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
+  await expect(panel.locator('.guide-reader')).toHaveCount(0);
+  await panel.locator('.guide-section-form button', { hasText: 'Limpiar' }).click();
+});

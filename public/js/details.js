@@ -7,6 +7,7 @@ import { state } from './state.js';
 import { loadSteamGameTab, steamPlain } from './steam.js';
 import { loadCapturesTab } from './captures.js';
 import { loadNewsTab } from './news.js';
+import { loadGuideTab } from './guides.js';
 
 export function metaSection(meta) {
   const section = document.createElement('section');
@@ -613,6 +614,7 @@ export function gameTabs(game, { summaryExtras = [], prefix = 'detail' } = {}) {
     ['information', 'Información'],
     ['media', 'Multimedia'],
     ['captures', 'Tus capturas'],
+    ['guide', 'Guía'],
     ...(game.platform !== 'Arcade' ? [['news', 'Novedades']] : []),
     ...(game.platform === 'Steam'
       ? [
@@ -650,6 +652,7 @@ export function gameTabs(game, { summaryExtras = [], prefix = 'detail' } = {}) {
     });
     if (key === 'steam' || key === 'achievements') loadSteamGameTab(content.get(key), game, key);
     if (key === 'captures') loadCapturesTab(content.get(key), game);
+    if (key === 'guide') loadGuideTab(content.get(key), game);
     if (key === 'news') loadNewsTab(content.get(key), game);
   };
   tablist.addEventListener('keydown', (event) => {

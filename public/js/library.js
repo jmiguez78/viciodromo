@@ -2,6 +2,7 @@
 import { applyCover, coverInfo, pruneCoverLoads } from './art.js';
 import { bindTiles, cachedPoster, decorateActions, playButtonHtml, selectTile, setStatusTone } from './cards.js';
 import { icon } from './icons.js';
+import { hasGuide } from './guides.js';
 import { load } from './main.js';
 import { remember, remembered, state } from './state.js';
 
@@ -11,13 +12,14 @@ export const library = document.querySelector('#library');
 // Con una lista abierta (F9), la búsqueda y los filtros se aplican sobre los juegos de esa lista.
 export function visibleEntries() {
   const list = state.list && (state.lists || []).find((item) => item.id === state.list);
-  const filtered = GMLCatalog.filterGames(list ? GMLCatalog.listGames(list, state.games) : state.games, {
+  let filtered = GMLCatalog.filterGames(list ? GMLCatalog.listGames(list, state.games) : state.games, {
     query: state.query,
     scope: list ? '' : state.installation,
     collection: list ? 'all' : activeCollection(),
     filters: state.filters,
     favorite: state.favorite
   });
+  if (state.withGuide) filtered = filtered.filter((game) => hasGuide(game.key));
   return GMLCatalog.collapseDuplicates(GMLCatalog.sortGames(filtered, state.sort, state.direction));
 }
 
@@ -373,6 +375,7 @@ export function renderActiveFilters() {
   if (state.query)
     labels.push(['“' + state.query + '”', () => (document.querySelector('#search').value = state.query = '')]);
   if (state.favorite) labels.push(['Favoritos', () => (state.favorite = false)]);
+  if (state.withGuide) labels.push(['Con guía', () => (state.withGuide = false)]);
   const facetLabels = {
     length: Object.fromEntries(GMLCatalog.facets.length.options),
     played: Object.fromEntries(GMLCatalog.facets.played.options),
@@ -400,6 +403,7 @@ export function renderActiveFilters() {
     chip.onclick = () => {
       remove();
       document.querySelector('#favorites-only').setAttribute('aria-pressed', String(state.favorite));
+      document.querySelector('#guides-only')?.setAttribute('aria-pressed', String(state.withGuide));
       renderLibrary();
       (document.querySelector('#active-filters button') || document.querySelector('#search')).focus();
     };
@@ -408,7 +412,9 @@ export function renderActiveFilters() {
   document.querySelector('#clear-filters').classList.toggle('hidden', labels.length === 0);
   const badge = document.querySelector('#active-filter-count');
   const facetCount =
-    Object.values(state.filters).reduce((sum, values) => sum + values.length, 0) + (state.favorite ? 1 : 0);
+    Object.values(state.filters).reduce((sum, values) => sum + values.length, 0) +
+    (state.favorite ? 1 : 0) +
+    (state.withGuide ? 1 : 0);
   badge.textContent = facetCount;
   badge.classList.toggle('hidden', facetCount === 0);
 }
@@ -418,9 +424,11 @@ export function clearFilters() {
   state.list = null;
   state.query = '';
   state.favorite = false;
+  state.withGuide = false;
   state.filters = { store: [], genre: [], length: [], played: [], rating: [], decade: [], players: [], tag: [] };
   document.querySelector('#search').value = '';
   document.querySelector('#favorites-only').setAttribute('aria-pressed', 'false');
+  document.querySelector('#guides-only')?.setAttribute('aria-pressed', 'false');
   renderLibrary();
 }
 
@@ -468,6 +476,11 @@ export function setup() {
     event.currentTarget.setAttribute('aria-pressed', String(state.favorite));
     renderLibrary();
   };
+  document.querySelector('#guides-only')?.addEventListener('click', (event) => {
+    state.withGuide = !state.withGuide;
+    event.currentTarget.setAttribute('aria-pressed', String(state.withGuide));
+    renderLibrary();
+  });
   document.querySelector('#facet-groups').addEventListener('click', (event) => {
     const option = event.target.closest('.facet-option');
     if (!option) return;

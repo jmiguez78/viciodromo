@@ -468,3 +468,66 @@ body.gamepad-active .couch .couch-action:focus-visible {
     ),
     linear-gradient(0deg, var(--night) 0%, rgb(var(--night-rgb) / 0) 60%);
 }
+.couch-guide {
+  width: min(92vw, 1080px);
+  max-height: 86vh;
+  padding: clamp(20px, 3vh, 40px);
+  border: 2px solid rgb(var(--white-rgb) / 0.22);
+  border-radius: clamp(14px, 1vw, 24px);
+  background: rgb(var(--night-rgb) / 0.97);
+  color: var(--white);
+  font-family: var(--font-ui);
+}
+.couch-guide::backdrop {
+  background: rgb(var(--black-rgb) / 0.78);
+}
+.couch-guide-shell {
+  display: grid;
+  gap: 2.2vh;
+}
+.couch-guide-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5vw;
+}
+.couch-guide-head h2 {
+  margin: 0;
+  font: 800 clamp(22px, 2.2vw, 48px) / 1.1 var(--font-display);
+}
+.couch-guide-legend {
+  margin: 0;
+  color: var(--muted-on-dark);
+  font-size: clamp(13px, 1.05vw, 22px);
+}
+.couch-guide-body {
+  display: grid;
+  gap: 1.8vh;
+  font-size: clamp(16px, 1.35vw, 30px);
+  line-height: 1.5;
+}
+.couch-guide-card {
+  display: grid;
+  gap: 1.2vh;
+  padding: clamp(14px, 2vh, 26px);
+  border: 1px solid rgb(var(--white-rgb) / 0.16);
+  border-radius: 14px;
+  background: rgb(var(--white-rgb) / 0.06);
+}
+.couch-guide-card h3 {
+  margin: 0;
+  font-size: clamp(18px, 1.5vw, 34px);
+}
+.couch-guide-hints {
+  margin: 0;
+  padding-left: 1.6em;
+  display: grid;
+  gap: 0.8vh;
+}
+.couch-guide-answer {
+  padding: 1.4vh 1.6vw;
+  border-left: 4px solid var(--accent);
+  background: rgb(var(--white-rgb) / 0.08);
+  border-radius: 8px;
+}

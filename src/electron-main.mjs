@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, nativeTheme, Notification, screen, session, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  nativeTheme,
+  Notification,
+  screen,
+  session,
+  shell
+} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +21,12 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PREFERRED_PORT = 47321;
 
 let server;
+let serverOrigin = '';
 let window;
+let guideWindow = null;
+let guideOverlayWindow = null;
+let guideOverlayKey = null;
+let guideSessionHardened = false;
 const scanMode = process.argv.includes('--scan');
 // Prueba de humo («--smoke=<carpeta>», ver tools/smoke.mjs): abre la interfaz con los datos en esa carpeta, sin
 // tocar los de la PC, anota el resultado en smoke.json y termina.
@@ -75,6 +90,13 @@ async function runScan() {
     await nightlyNews(app.getPath('userData'), log, { mameVersion: async () => (await arcade.info()).version });
   } catch (error) {
     log('warn', 'tarea', `Novedades: ${error.message}`);
+  }
+  // Disponibilidad de guías libres en StrategyWiki (ver guides.mjs), sólo consulta si existen.
+  try {
+    const { nightlyGuides } = await import('./guides.mjs');
+    await nightlyGuides(app.getPath('userData'), log);
+  } catch (error) {
+    log('warn', 'tarea', `Guías: ${error.message}`);
   }
   const { flushLog } = await import('./log.mjs');
   await flushLog();
@@ -226,10 +248,233 @@ function identifyDisplays(items) {
     setTimeout(() => overlay.isDestroyed() || overlay.destroy(), 3000);
   }
 }
+const GUIDE_URL = /^https:\/\//i;
+// Visor auxiliar aislado para guías externas (GameFAQs, Steam, YouTube, IGN): sin acceso a 127.0.0.1 ni a Node.
+function openGuideWindow({ url, title, display, inactive = false } = {}) {
+  if (!GUIDE_URL.test(String(url ?? ''))) return false;
+  const all = screen.getAllDisplays();
+  const targetDisplay = (display?.id && all.find((item) => String(item.id) === String(display.id))) || null;
+  const area = (targetDisplay ?? screen.getPrimaryDisplay()).workArea;
+  const width = targetDisplay
+    ? Math.min(1280, Math.max(760, Math.round(area.width * 0.92)))
+    : Math.min(1040, area.width);
+  const height = targetDisplay
+    ? Math.min(960, Math.max(600, Math.round(area.height * 0.92)))
+    : Math.min(780, area.height);
+  const bounds = {
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+    width,
+    height
+  };
+  const guideSession = session.fromPartition('persist:guides');
+  if (!guideSessionHardened) {
+    guideSessionHardened = true;
+    guideSession.setPermissionRequestHandler((_contents, permission, done) => done(permission === 'fullscreen'));
+    guideSession.setPermissionCheckHandler((_contents, permission) => permission === 'fullscreen');
+  }
+  const windowTitle = title ? `${title} — Guía · Viciódromo` : 'Guía · Viciódromo';
+  if (guideWindow && !guideWindow.isDestroyed()) {
+    guideWindow.setTitle(windowTitle);
+    if (targetDisplay) guideWindow.setBounds(bounds);
+    if (guideWindow.webContents.getURL() !== url) guideWindow.loadURL(url).catch(() => {});
+    if (inactive) guideWindow.showInactive();
+    else {
+      if (guideWindow.isMinimized()) guideWindow.restore();
+      guideWindow.show();
+      guideWindow.focus();
+    }
+    return true;
+  }
+  guideWindow = new BrowserWindow({
+    ...bounds,
+    minWidth: 640,
+    minHeight: 480,
+    title: windowTitle,
+    icon: path.join(root, 'public', 'brand', 'icon-256.png'),
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#07080c' : '#f4f5f8',
+    autoHideMenuBar: true,
+    webPreferences: {
+      partition: 'persist:guides',
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      navigateOnDragDrop: false,
+      spellcheck: false
+    }
+  });
+  guideWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  guideWindow.webContents.on('will-navigate', (event, nextUrl) => {
+    if (!GUIDE_URL.test(nextUrl)) event.preventDefault();
+  });
+  guideWindow.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+    if (GUIDE_URL.test(popupUrl)) shell.openExternal(popupUrl);
+    return { action: 'deny' };
+  });
+  guideWindow.once('ready-to-show', () => {
+    if (!guideWindow || guideWindow.isDestroyed()) return;
+    if (inactive) guideWindow.showInactive();
+    else guideWindow.show();
+  });
+  guideWindow.on('closed', () => {
+    guideWindow = null;
+  });
+  guideWindow.loadURL(url).catch(() => {});
+  return true;
+}
+
+const clampOverlayOpacity = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? Math.max(0.35, Math.min(1, num)) : 0.92;
+};
+
+// Ventana flotante siempre visible sobre juegos en ventana sin bordes (Fase 4).
+function openGuideOverlay({ gameKey, title, opacity = 0.92, inactive = false, toggle = false } = {}) {
+  if (!serverOrigin || !gameKey) return { open: false };
+  const url = `${serverOrigin}/guide-overlay.html?key=${encodeURIComponent(gameKey)}`;
+  const alpha = clampOverlayOpacity(opacity);
+
+  if (toggle && guideOverlayWindow && !guideOverlayWindow.isDestroyed()) {
+    if (guideOverlayWindow.isVisible()) {
+      guideOverlayWindow.hide();
+      server?.guides?.setOverlayOpen(false);
+      return { open: false };
+    }
+    guideOverlayWindow.setOpacity(alpha);
+    guideOverlayWindow.showInactive();
+    server?.guides?.setOverlayOpen(true);
+    return { open: true };
+  }
+
+  const windowTitle = title ? `${title} · Guía flotante` : 'Guía flotante · Viciódromo';
+  if (guideOverlayWindow && !guideOverlayWindow.isDestroyed()) {
+    guideOverlayWindow.setTitle(windowTitle);
+    guideOverlayWindow.setOpacity(alpha);
+    if (guideOverlayKey !== gameKey) {
+      guideOverlayKey = gameKey;
+      guideOverlayWindow.loadURL(url).catch(() => {});
+    }
+    if (inactive) guideOverlayWindow.showInactive();
+    else guideOverlayWindow.show();
+    server?.guides?.setOverlayOpen(true);
+    return { open: true };
+  }
+
+  const area = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(440, Math.max(340, Math.round(area.width * 0.28)));
+  const height = Math.min(640, Math.max(420, Math.round(area.height * 0.65)));
+  const x = Math.round(area.x + area.width - width - 20);
+  const y = Math.round(area.y + 20);
+
+  guideOverlayKey = gameKey;
+  guideOverlayWindow = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    minWidth: 320,
+    minHeight: 380,
+    title: windowTitle,
+    icon: path.join(root, 'public', 'brand', 'icon-256.png'),
+    show: false,
+    alwaysOnTop: true,
+    opacity: alpha,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#07080c' : '#f4f5f8',
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      navigateOnDragDrop: false,
+      spellcheck: false
+    }
+  });
+  guideOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  guideOverlayWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  guideOverlayWindow.webContents.on('will-navigate', (event, nextUrl) => {
+    if (!nextUrl.startsWith(`${serverOrigin}/guide-overlay.html`)) event.preventDefault();
+  });
+  guideOverlayWindow.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+    if (GUIDE_URL.test(popupUrl)) shell.openExternal(popupUrl);
+    return { action: 'deny' };
+  });
+  guideOverlayWindow.once('ready-to-show', () => {
+    if (!guideOverlayWindow || guideOverlayWindow.isDestroyed()) return;
+    if (inactive) guideOverlayWindow.showInactive();
+    else guideOverlayWindow.show();
+  });
+  guideOverlayWindow.on('closed', () => {
+    guideOverlayWindow = null;
+    guideOverlayKey = null;
+    server?.guides?.setOverlayOpen(false);
+  });
+  guideOverlayWindow.loadURL(url).catch(() => {});
+  server?.guides?.setOverlayOpen(true);
+  return { open: true };
+}
+
+function closeGuideOverlay() {
+  if (guideOverlayWindow && !guideOverlayWindow.isDestroyed()) {
+    guideOverlayWindow.close();
+  }
+  server?.guides?.setOverlayOpen(false);
+}
+
+function setGuideOverlayOpacity(opacity) {
+  if (guideOverlayWindow && !guideOverlayWindow.isDestroyed()) {
+    guideOverlayWindow.setOpacity(clampOverlayOpacity(opacity));
+  }
+}
+
+function applyGuideShortcuts(settings = {}) {
+  globalShortcut.unregisterAll();
+  const status = {
+    supported: true,
+    enabled: Boolean(settings.shortcutsEnabled),
+    toggle: { accelerator: settings.toggleShortcut || '', registered: false, error: null },
+    nextHint: { accelerator: settings.nextHintShortcut || '', registered: false, error: null }
+  };
+  if (!settings.shortcutsEnabled) return status;
+
+  const tryRegister = (target, handler) => {
+    if (!target.accelerator) return;
+    try {
+      target.registered = globalShortcut.register(target.accelerator, handler);
+      if (!target.registered) target.error = 'El atajo está ocupado por Windows u otra aplicación.';
+    } catch (error) {
+      target.registered = false;
+      target.error = error.message;
+    }
+  };
+
+  tryRegister(status.toggle, () => {
+    if (guideOverlayWindow && !guideOverlayWindow.isDestroyed()) {
+      openGuideOverlay({ gameKey: guideOverlayKey, opacity: settings.opacity, toggle: true });
+      return;
+    }
+    const key = server?.guides?.activeGameKey?.();
+    if (key) openGuideOverlay({ gameKey: key, opacity: settings.opacity, inactive: true });
+  });
+
+  tryRegister(status.nextHint, () => {
+    server?.guides?.triggerNextHint?.().catch(() => {});
+  });
+
+  return status;
+}
+
 const callbacks = {
   onLaunch: () => window?.minimize(),
   listDisplays,
   identifyDisplays,
+  openGuideWindow,
+  openGuideOverlay,
+  closeGuideOverlay,
+  setGuideOverlayOpacity,
+  applyGuideShortcuts,
   onLibraryChange: refreshJumpListSoon,
   // Después de copiar los datos junto al .exe: se vuelve a abrir el portable (no la copia temporal).
   onRestart: () => {
@@ -385,7 +630,12 @@ async function openWindow() {
   }
   server = await listen(startServer, PREFERRED_PORT);
   const origin = `http://127.0.0.1:${server.address().port}`;
+  serverOrigin = origin;
   log('info', 'app', `Inicio de la versión ${app.getVersion()} en ${origin}`);
+  server.guides
+    ?.getCompanionSettings()
+    .then((companion) => server.guides.setShortcutStatus(applyGuideShortcuts(companion)))
+    .catch(() => {});
 
   // Permisos: sólo pantalla completa (modo sala). Cámara, micrófono, ubicación o notificaciones, nunca.
   session.defaultSession.setPermissionRequestHandler((_contents, permission, done) =>
@@ -411,6 +661,11 @@ async function openWindow() {
   window.webContents.on('render-process-gone', (_event, details) =>
     log('error', 'app', `La interfaz se cerró inesperadamente: ${details.reason}`)
   );
+  window.on('closed', () => {
+    if (guideWindow && !guideWindow.isDestroyed()) guideWindow.close();
+    if (guideOverlayWindow && !guideOverlayWindow.isDestroyed()) guideOverlayWindow.close();
+    globalShortcut.unregisterAll();
+  });
   await window.loadURL(origin);
   adoptShortcuts();
   refreshJumpList();
@@ -438,6 +693,7 @@ if (smokeDir) {
   });
   app.whenReady().then(openWindow);
   app.on('window-all-closed', () => {
+    globalShortcut.unregisterAll();
     server?.close();
     if (process.platform !== 'darwin') app.quit();
   });

@@ -6,6 +6,7 @@ import { escapeHtml, plural, request } from './api.js';
 import { notify, notifyError } from './feedback.js';
 import { icon } from './icons.js';
 import { playGame } from './launch.js';
+import { openGuideForGame, openGuideOverlayForGame } from './guides.js';
 import { showPage } from './main.js';
 import { state } from './state.js';
 
@@ -63,6 +64,12 @@ export function defaultDisplay(game) {
   return findDisplay(game.display) ?? primaryDisplay();
 }
 
+// Otro monitor conectado para abrir la guía al lado del juego.
+export function companionFor(game) {
+  const current = defaultDisplay(game);
+  return displays.list.find((item) => item.id !== current?.id) ?? null;
+}
+
 export function displayLabel(display) {
   return (
     display.name +
@@ -107,16 +114,22 @@ export function displayFromValue(value, saved = null) {
 }
 
 // ── Jugar ▾ ─────────────────────────────────────────────────────
-// Con más de un monitor, el botón Jugar de la página del juego suma una flecha con los monitores.
+// El botón Jugar suma una flecha para elegir otro monitor (si hay más de uno), abrir la guía en la otra
+// pantalla o lanzar el juego junto a la ventana flotante de guía (1 o más pantallas).
 export function playSplitHtml(game, playHtml) {
-  if (!displays.supported || game.installed === false || !game.launch?.available) return playHtml;
+  if (game.installed === false || !game.launch?.available) return playHtml;
+  const label = displays.supported ? 'Jugar en otro monitor o con guía' : 'Más opciones para jugar';
   return (
     '<div class="play-split">' +
     playHtml +
     '<button type="button" class="button play play-more" data-play-menu aria-haspopup="menu" aria-expanded="false"' +
-    ' aria-label="Jugar en otro monitor" title="Jugar en otro monitor">' +
+    ' aria-label="' +
+    label +
+    '" title="' +
+    label +
+    '">' +
     icon('chevronDown') +
-    '</button><div class="play-menu" role="menu" aria-label="Jugar en" hidden></div></div>'
+    '</button><div class="play-menu" role="menu" aria-label="Opciones para jugar" hidden></div></div>'
   );
 }
 
@@ -135,26 +148,45 @@ export function decoratePlay(root, game) {
 
 function fillMenu(menu, game) {
   const current = defaultDisplay(game);
-  menu.innerHTML = displays.list
-    .map(
-      (display) =>
-        '<button type="button" role="menuitemradio" class="play-menu-item" data-display="' +
-        escapeHtml(display.id) +
-        '" aria-checked="' +
-        String(display === current) +
-        '" tabindex="-1"><span>' +
-        escapeHtml(display.name) +
-        '</span><small>' +
-        escapeHtml(
-          [display.primary ? 'principal' : '', display === current ? 'predeterminado' : ''].filter(Boolean).join(' · ')
-        ) +
-        '</small>' +
-        icon('check') +
-        '</button>'
-    )
-    .join('');
+  const monitorItems = displays.supported
+    ? displays.list.map(
+        (display) =>
+          '<button type="button" role="menuitemradio" class="play-menu-item" data-display="' +
+          escapeHtml(display.id) +
+          '" aria-checked="' +
+          String(display === current) +
+          '" tabindex="-1"><span>' +
+          escapeHtml(display.name) +
+          '</span><small>' +
+          escapeHtml(
+            [display.primary ? 'principal' : '', display === current ? 'predeterminado' : '']
+              .filter(Boolean)
+              .join(' · ')
+          ) +
+          '</small>' +
+          icon('check') +
+          '</button>'
+      )
+    : [];
+  menu.innerHTML = monitorItems.join('');
+  const companion = displays.supported ? companionFor(game) : null;
+  if (companion)
+    menu.insertAdjacentHTML(
+      'beforeend',
+      '<button type="button" role="menuitem" class="play-menu-item play-menu-link" data-play-guide tabindex="-1">' +
+        '<span>Jugar con la guía</span><small>Guía en ' +
+        escapeHtml(companion.name) +
+        '</small></button>'
+    );
+  menu.insertAdjacentHTML(
+    'beforeend',
+    '<button type="button" role="menuitem" class="play-menu-item play-menu-link" data-play-overlay tabindex="-1">' +
+      '<span>Jugar con ventana flotante</span><small>' +
+      (displays.supported ? 'Siempre visible · ventana sin bordes' : 'Siempre visible · 1 pantalla') +
+      '</small></button>'
+  );
   // Mientras ningún monitor tenga nombre propio, el menú invita a ponérselo.
-  if (!displays.list.some((display) => display.alias))
+  if (displays.supported && !displays.list.some((display) => display.alias))
     menu.insertAdjacentHTML(
       'beforeend',
       '<button type="button" role="menuitem" class="play-menu-item play-menu-link" data-name-displays tabindex="-1">' +
@@ -183,7 +215,8 @@ function showMenu(toggle) {
   menu.hidden = false;
   toggle.setAttribute('aria-expanded', 'true');
   openMenu = { menu, toggle, game };
-  (menu.querySelector('[aria-checked=true]') ?? menu.querySelector('[role=menuitemradio]'))?.focus();
+  const focusItem = menu.querySelector('[aria-checked=true]') ?? menu.querySelector('[role^=menuitem]');
+  focusItem?.focus();
 }
 
 export function setup() {
@@ -201,6 +234,21 @@ export function setup() {
     if (event.target.closest('[data-name-displays]')) {
       closeMenu();
       goToDisplays();
+      return;
+    }
+    if (event.target.closest('[data-play-guide]') && openMenu) {
+      const { game } = openMenu;
+      const companion = companionFor(game);
+      closeMenu();
+      playGame(game);
+      if (companion) openGuideForGame(game, { display: displayRefOf(companion), inactive: true });
+      return;
+    }
+    if (event.target.closest('[data-play-overlay]') && openMenu) {
+      const { game } = openMenu;
+      closeMenu();
+      playGame(game);
+      openGuideOverlayForGame(game, { inactive: true });
       return;
     }
     const item = event.target.closest('.play-menu-item');

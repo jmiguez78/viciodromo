@@ -195,6 +195,14 @@ Los últimos juegos jugados en la Jump List del ícono de la barra de tareas. El
 
 Instalador para Windows junto al portable; la versión instalada descarga e instala las versiones nuevas desde Configuración. Prueba de humo del ejecutable, también en GitHub antes de publicar.
 
+## 0.39.0 a 0.44.0 — Mando, monitores y Novedades · Completada
+
+Mando sólo con la ventana en foco y opción de horas jugadas (`0.39.0`), cada juego en su monitor (`0.40.0`) y Novedades de los juegos que seguís en cuatro fases (`0.41.0`–`0.44.0`).
+
+## 0.45.0 a 0.48.0 — Guías de pistas y soluciones · Completada
+
+Pestaña **Guía** con enlaces armados en visor auxiliar aislado, «Acá estoy», notas con capturas y **Jugar con la guía** (`0.45.0`); guías sin conexión desde **StrategyWiki** (CC BY-SA) e importación nativa de `.txt`, `.md` y `.html`, lector por tramos con búsqueda y antispoiler, filtro **Con guía** y consulta nocturna (`0.46.0`); modo **Pistas** escalonadas por defecto con editor manual e IA opcional para pistear, preguntar y traducir por tramo (`0.47.0`); ventana flotante siempre visible con transparencia y atajos globales, guía en el celular por código QR en red local (`src/guide-lan.mjs`), tramo guardado en la fila **Continuar** y navegación con mando en modo sala (`0.48.0`, ver [plan de guías](plan-guias.md)).
+
 ## Próximo
 
 - Tanda 3, lo que falta: probar el instalador y el portable en otra PC desde cero, revisar cada `.exe` en VirusTotal y firmar los ejecutables.

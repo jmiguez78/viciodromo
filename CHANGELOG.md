@@ -1,5 +1,42 @@
 # Registro de cambios
 
+## 0.48.0
+
+**Guías de pistas y soluciones, cuarta parte: jugar con la guía al lado.**
+
+- **Ventana flotante siempre visible (1 pantalla).** Nueva ventana compacta por encima del juego con control de transparencia (35 % a 100 %) y aviso sobre pantalla completa exclusiva. Disponible también desde **Jugar ▾ → Jugar con ventana flotante** aun con un solo monitor.
+- **Atajos globales configurables.** Combinaciones personalizables para mostrar u ocultar la ventana flotante (`Ctrl+Alt+G`) o revelar la pista siguiente (`Ctrl+Alt+H`) sin sacar el foco del juego.
+- **Guía en el celular por código QR.** Micro-servidor efímero separado en la red local (apagado por defecto, con código QR propio, token de un solo uso canjeable por cookie de sesión y apagado automático al cerrar el juego).
+- **Inicio y modo sala.** La fila **Continuar** de Inicio muestra el tramo guardado y la cantidad de pistas vistas; en modo sala, la ficha suma **Guía y pistas** con navegación completa por mando (tramos con `LB`/`RB`, pistas y solución sin salir de la tele).
+
+## 0.47.0
+
+**Guías de pistas y soluciones, tercera parte: pistas escalonadas e IA opcional.**
+
+- **Modo Pistas por defecto.** Al abrir una guía sin conexión por primera vez se muestra el nivel **Pistas**; cambiar a **Solución** pide una confirmación breve (con opción de no volver a preguntar en ese juego) y recuerda tu elección.
+- **Pistas graduales.** Cada pregunta revela sus pistas de a una (**Ver pista 1**, **Otra pista**) y guarda cuántas viste. Al final, **Ver la respuesta** muestra el fragmento citado de la solución.
+- **Editor manual.** Podés agregar, editar o corregir preguntas, pistas y respuestas en cualquier tramo sin usar IA.
+- **IA opcional (con tu clave de Anthropic).** Si cargaste tu clave (reutiliza la de Novedades si ya existe, o podés cargar una en Guía): **Armar pistas con IA** convierte un tramo en preguntas graduales sin spoilers; **Preguntar sobre esta guía** responde primero con una pista y la cita de origen (solo sobre tramos desbloqueados, sin inventar); y **Traducir tramo** traduce tramos al español con **Ver original**. Incluye estimación de costo antes de pistear.
+
+## 0.46.0
+
+**Guías de pistas y soluciones, segunda parte: guías sin conexión y antispoiler.**
+
+- **StrategyWiki sin conexión.** Desde la pestaña **Guía**, buscá y descargá guías libres de StrategyWiki (CC BY-SA 4.0 / 3.0) para leerlas sin internet, divididas en tramos y con atribución visible, número de revisión y enlace al original.
+- **Importar archivos propios.** Importá guías en `.txt`, `.md` o `.html` que ya tengas en tu PC: detecta tramos por encabezados, subrayados o numeración de FAQs, y permite renombrar tramos o unir cortes con el anterior. Quedan sólo en tu equipo.
+- **Lector por tramos con búsqueda y antispoiler.** Índice lateral con búsqueda interna. Al marcar **«Acá estoy»** en un tramo, los tramos siguientes se muestran como `Tramo N` y quedan protegidos por confirmación breve (con opción de mostrar títulos o no volver a preguntar en ese juego).
+- **Biblioteca y búsqueda nocturna.** Nuevo filtro **Con guía** e insignia en la portada de los juegos con guía sin conexión; la búsqueda nocturna consulta en lotes qué juegos instalados tienen guía disponible en StrategyWiki sin descargarlas.
+
+## 0.45.0
+
+**Guías de pistas y soluciones, primera parte: la guía en la ficha.**
+
+- **Pestaña Guía** en la ficha de cada juego (PC y Arcade): reúne enlaces directos a **GameFAQs**, **Guías de Steam** (cuando el juego tiene App ID), **StrategyWiki**, **YouTube** e **IGN**. Viciódromo no copia guías con derechos reservados.
+- **Visor auxiliar aislado.** En la aplicación de escritorio, los enlaces pueden abrirse en una ventana propia de guía aislada (o en el navegador). Con dos monitores o más, la guía se abre en la otra pantalla para acompañar la partida.
+- **Jugar con la guía.** Con dos o más monitores, el desplegable **Jugar ▾** suma **Jugar con la guía**, que inicia el juego y abre la guía en el monitor acompañante sin quitarle el foco.
+- **«Acá estoy».** Cada juego guarda el tramo o capítulo donde vas para retomar después sin spoilers.
+- **Notas de partida por tramo.** Podés anotar códigos, trabas o pistas propias asociadas al tramo y adjuntar imágenes de **Tus capturas** (se amplían en la galería). Todo se guarda en `guides/progress.json`.
+
 ## 0.44.0
 
 **Novedades, cuarta parte: IGDB, avisos de Windows y traducción con IA.**

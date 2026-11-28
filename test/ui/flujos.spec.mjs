@@ -261,3 +261,124 @@ test('novedades: seguir un juego desde la ficha, elegir qué entra, silenciarlo 
   await expect(page.locator('#game-aside [data-action=follow]')).toHaveCount(0);
   await expect(page.locator('#game-page [role=tab]', { hasText: 'Novedades' })).toHaveCount(0);
 });
+
+test('guía fase 1: enlaces, Acá estoy, notas con captura y Jugar con la guía', async ({ page }) => {
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await expect(panel.locator('.guide-link-row')).toHaveCount(5);
+  await expect(panel.locator('.guide-links')).toContainText('GameFAQs');
+  await expect(panel.locator('.guide-links')).toContainText('Guías de Steam');
+
+  // Guardar «Acá estoy» y comprobar persistencia al recargar.
+  await panel.locator('.guide-section-form input').fill('Capítulo 4 · El puente');
+  await panel.locator('.guide-section-form button[type=submit]').click();
+  await expect(panel.locator('.guide-progress-card .helper-text')).toContainText('Capítulo 4 · El puente');
+
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const reloaded = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await expect(reloaded.locator('.guide-section-form input')).toHaveValue('Capítulo 4 · El puente');
+
+  // Crear nota de partida adjuntando una captura real del juego.
+  await reloaded.locator('.guide-note-form textarea').fill('Revisar la palanca roja antes de cruzar.');
+  await reloaded.locator('.guide-note-form button', { hasText: 'Adjuntar captura' }).click();
+  const firstPick = reloaded.locator('.guide-picker-item').first();
+  await expect(firstPick).toBeVisible();
+  await firstPick.click();
+  await expect(reloaded.locator('.guide-selected-chip')).toHaveCount(1);
+  await reloaded.locator('.guide-note-form button[type=submit]').click();
+
+  const note = reloaded.locator('.guide-note-item').first();
+  await expect(note).toContainText('Capítulo 4 · El puente');
+  await expect(note).toContainText('Revisar la palanca roja antes de cruzar.');
+  await expect(note.locator('.guide-capture-thumb')).toHaveCount(1);
+
+  // La miniatura abre la galería ampliada.
+  await note.locator('.guide-capture-thumb').click();
+  await expect(page.locator('#media-viewer img')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Editar nota, borrarla y limpiar el tramo guardado para no afectar otras pruebas.
+  await note.locator('button', { hasText: 'Editar' }).click();
+  await note.locator('.guide-note-edit textarea').fill('Palanca roja activada.');
+  await note.locator('.guide-note-edit button[type=submit]').click();
+  await expect(note).toContainText('Palanca roja activada.');
+  await note.locator('button', { hasText: 'Borrar' }).click();
+  await expect(reloaded.locator('.guide-note-item')).toHaveCount(0);
+  await reloaded.locator('.guide-section-form button', { hasText: 'Limpiar' }).click();
+  await expect(reloaded.locator('.guide-section-form input')).toHaveValue('');
+
+  // Arcade también tiene pestaña Guía (sin Guías de Steam).
+  await openGame(page, 'arcade:laber');
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const arcadePanel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await expect(arcadePanel.locator('.guide-link-row')).toHaveCount(4);
+  await expect(arcadePanel.locator('.guide-links')).toContainText('StrategyWiki');
+
+  // Con dos monitores, Jugar ▾ ofrece «Jugar con la guía» en el monitor acompañante.
+  const openCalls = [];
+  await page.route('**/api/displays', (route) =>
+    route.fulfill({
+      json: {
+        supported: true,
+        identify: true,
+        displays: [
+          {
+            id: '1',
+            label: 'Odyssey G5',
+            detected: 'Odyssey G5',
+            alias: '',
+            name: 'Odyssey G5',
+            number: 1,
+            primary: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            games: 0
+          },
+          {
+            id: '2',
+            label: 'LG TV SSCR2',
+            detected: 'LG TV SSCR2',
+            alias: '',
+            name: 'LG TV SSCR2',
+            number: 2,
+            primary: false,
+            x: 1920,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            games: 0
+          }
+        ],
+        known: []
+      }
+    })
+  );
+  await page.route('**/api/guides/game/**/open', async (route) => {
+    openCalls.push(JSON.parse(route.request().postData() || '{}'));
+    await route.fulfill({
+      json: {
+        ok: true,
+        opened: 'viewer',
+        url: 'https://gamefaqs.gamespot.com',
+        display: { id: '2', name: 'LG TV SSCR2' }
+      }
+    });
+  });
+  await openApp(page);
+  await openGame(page, 'steam:900000');
+  await page.locator('#game-aside [data-play-menu]').click();
+  const playWithGuide = page.locator('#game-aside [data-play-guide]');
+  await expect(playWithGuide).toContainText('Jugar con la guía');
+  await expect(playWithGuide).toContainText('LG TV SSCR2');
+  const [launchReq] = await Promise.all([page.waitForRequest(/\/api\/launch\//), playWithGuide.click()]);
+  expect(decodeURIComponent(launchReq.url())).toContain('steam:900000');
+  await expect.poll(() => openCalls.length).toBe(1);
+  expect(openCalls[0].inactive).toBe(true);
+  expect(openCalls[0].display?.id).toBe('2');
+});

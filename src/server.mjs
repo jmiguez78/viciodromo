@@ -40,7 +40,9 @@ import { integrationRoutes } from './routes/integrations.mjs';
 import { systemRoutes } from './routes/system.mjs';
 import { screenshotRoutes } from './routes/screenshots.mjs';
 import { newsRoutes } from './routes/news.mjs';
+import { guidesRoutes } from './routes/guides.mjs';
 import { createNews } from './news.mjs';
+import { companionDisplay, createGuides } from './guides.mjs';
 import { createUpdates } from './updates.mjs';
 import { noAutoUpdate } from './auto-update.mjs';
 import { readFileSync } from 'node:fs';
@@ -376,6 +378,7 @@ const news = createNews({
   mameVersion: async () => (await arcade.info()).version,
   onChange: (summary) => tasks.emit('news', summary)
 });
+const guides = createGuides({ dataDir, log });
 function onlineSources(game, meta, kind) {
   if (offline) return [];
   if (isArcade(game)) return arcade.onlineSources(game, kind);
@@ -788,6 +791,17 @@ async function diagnostics() {
       readable: saved !== null
     });
   }
+  const guidesInfo = await fs.stat(guides.filePath).catch(() => null);
+  if (guidesInfo?.isFile()) {
+    const saved = guidesInfo.size < 50_000_000 ? await readJsonCached(guides.filePath, null) : null;
+    files.push({
+      name: 'guides/progress.json',
+      bytes: guidesInfo.size,
+      modifiedAt: guidesInfo.mtime.toISOString(),
+      schema: saved?.schemaVersion ?? saved?.schema ?? null,
+      readable: saved !== null
+    });
+  }
   const catalog = await library().catch(() => ({ games: [] }));
   const byPlatform = {};
   for (const game of catalog.games) byPlatform[game.platform] = (byPlatform[game.platform] ?? 0) + 1;
@@ -836,6 +850,8 @@ export function createServer({
   identifyDisplays = null,
   // Novedades nuevas tras una consulta (con fresh y notify): la aplicación de escritorio muestra el aviso de Windows.
   onNews,
+  // Visor auxiliar aislado para abrir guías externas (sólo en Electron).
+  openGuideWindow = null,
   autoUpdate = noAutoUpdate
 } = {}) {
   const router = createRouter();
@@ -1024,6 +1040,29 @@ export function createServer({
     gameArt,
     screenshots,
     news,
+    guides,
+    guideViewerSupported: Boolean(openGuideWindow),
+    async companionDisplayFor(game, once = null) {
+      const list = await connectedDisplays();
+      if (!displayHelper.supported || list.length < 2) return null;
+      const gameTarget = chooseDisplay(game, list, once)?.display ?? null;
+      return companionDisplay(list, gameTarget);
+    },
+    async openGuide({ game, url, display = null, inactive = false }) {
+      const list = await connectedDisplays();
+      const chosen = display ? findDisplay(list, display) : await deps.companionDisplayFor(game);
+      const ref = chosen ? { id: chosen.id, name: chosen.name, bounds: chosen.bounds } : null;
+      if (openGuideWindow) {
+        await openGuideWindow({ url, title: game.name, display: ref, inactive });
+        return {
+          ok: true,
+          opened: 'viewer',
+          url,
+          display: ref ? { id: ref.id, name: ref.name } : null
+        };
+      }
+      return { ok: true, opened: 'external', url, display: null };
+    },
     saveScreenshotFolders,
     async openScreenshot(id) {
       const file = await screenshots.path(id);
@@ -1135,6 +1174,7 @@ export function createServer({
   systemRoutes(router, deps);
   screenshotRoutes(router, deps);
   newsRoutes(router, deps);
+  guidesRoutes(router, deps);
 
   const server = http.createServer(async (req, res) => {
     try {

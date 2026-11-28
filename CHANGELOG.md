@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 0.45.0
+
+**Guías de pistas y soluciones, primera parte: la guía en la ficha.**
+
+- **Pestaña Guía** en la ficha de cada juego (PC y Arcade): reúne enlaces directos a **GameFAQs**, **Guías de Steam** (cuando el juego tiene App ID), **StrategyWiki**, **YouTube** e **IGN**. Viciódromo no copia guías con derechos reservados.
+- **Visor auxiliar aislado.** En la aplicación de escritorio, los enlaces pueden abrirse en una ventana propia de guía aislada (o en el navegador). Con dos monitores o más, la guía se abre en la otra pantalla para acompañar la partida.
+- **Jugar con la guía.** Con dos o más monitores, el desplegable **Jugar ▾** suma **Jugar con la guía**, que inicia el juego y abre la guía en el monitor acompañante sin quitarle el foco.
+- **«Acá estoy».** Cada juego guarda el tramo o capítulo donde vas para retomar después sin spoilers.
+- **Notas de partida por tramo.** Podés anotar códigos, trabas o pistas propias asociadas al tramo y adjuntar imágenes de **Tus capturas** (se amplían en la galería). Todo se guarda en `guides/progress.json`.
+
 ## 0.44.0
 
 **Novedades, cuarta parte: IGDB, avisos de Windows y traducción con IA.**

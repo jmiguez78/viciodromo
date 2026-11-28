@@ -6,6 +6,7 @@ import { escapeHtml, plural, request } from './api.js';
 import { notify, notifyError } from './feedback.js';
 import { icon } from './icons.js';
 import { playGame } from './launch.js';
+import { openGuideForGame } from './guides.js';
 import { showPage } from './main.js';
 import { state } from './state.js';
 
@@ -61,6 +62,12 @@ const primaryDisplay = () => displays.list.find((item) => item.primary) ?? null;
 // El monitor donde abre Jugar: el predeterminado del juego si está conectado; si no, el principal.
 export function defaultDisplay(game) {
   return findDisplay(game.display) ?? primaryDisplay();
+}
+
+// Otro monitor conectado para abrir la guía al lado del juego.
+export function companionFor(game) {
+  const current = defaultDisplay(game);
+  return displays.list.find((item) => item.id !== current?.id) ?? null;
 }
 
 export function displayLabel(display) {
@@ -153,6 +160,15 @@ function fillMenu(menu, game) {
         '</button>'
     )
     .join('');
+  const companion = companionFor(game);
+  if (companion)
+    menu.insertAdjacentHTML(
+      'beforeend',
+      '<button type="button" role="menuitem" class="play-menu-item play-menu-link" data-play-guide tabindex="-1">' +
+        '<span>Jugar con la guía</span><small>Guía en ' +
+        escapeHtml(companion.name) +
+        '</small></button>'
+    );
   // Mientras ningún monitor tenga nombre propio, el menú invita a ponérselo.
   if (!displays.list.some((display) => display.alias))
     menu.insertAdjacentHTML(
@@ -201,6 +217,14 @@ export function setup() {
     if (event.target.closest('[data-name-displays]')) {
       closeMenu();
       goToDisplays();
+      return;
+    }
+    if (event.target.closest('[data-play-guide]') && openMenu) {
+      const { game } = openMenu;
+      const companion = companionFor(game);
+      closeMenu();
+      playGame(game);
+      if (companion) openGuideForGame(game, { display: displayRefOf(companion), inactive: true });
       return;
     }
     const item = event.target.closest('.play-menu-item');

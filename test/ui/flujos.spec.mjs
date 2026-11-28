@@ -542,8 +542,15 @@ test('guía fase 4: ventana flotante, QR celular, Continuar y modo sala con mand
   await qForm.locator('button[type=submit]').click();
 
   await panel.locator('.guide-question-card button', { hasText: 'Ver pista 1' }).click();
+  // Revelar la pista vuelve a dibujar la pestaña: esperar a que termine antes de tocar «Acá estoy».
+  await expect(panel.locator('.guide-question-card')).toContainText('Mirá cerca de la estatua.');
   await panel.locator('.guide-section-form input').fill('Puente norte');
+  const savedSection = page.waitForResponse(
+    (res) => res.url().endsWith('/progress') && res.request().method() === 'PUT' && res.ok()
+  );
   await panel.locator('.guide-section-form button[type=submit]').click();
+  await savedSection;
+  await expect(panel.locator('.guide-section-form input')).toHaveValue('Puente norte');
 
   // QR para abrir la guía en el celular y apagado posterior.
   await panel.locator('.guide-companion-actions button', { hasText: 'En el celular (QR)' }).click();

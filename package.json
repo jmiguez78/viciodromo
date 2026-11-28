@@ -85,6 +85,6 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.11",
-    "steam-games-mcp": "0.17.0"
+    "steam-games-mcp": "0.18.0"
   }
 }

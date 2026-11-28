@@ -509,3 +509,84 @@ test('guía fase 3: modo Pistas por defecto, revelado paso a paso, editor manual
   await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
   await expect(panel.locator('.guide-reader')).toHaveCount(0);
 });
+
+test('guía fase 4: ventana flotante, QR celular, Continuar y modo sala con mando', async ({ page }) => {
+  await openApp(page);
+  const continueTile = page.locator('#home-shelves .shelf-track[data-shelf="continue"] .poster').first();
+  await expect(continueTile).toBeVisible();
+  const gameKey = await continueTile.getAttribute('data-key');
+
+  await openGame(page, gameKey);
+
+  // Con 1 monitor, Jugar ▾ igualmente ofrece abrir la ventana flotante.
+  await page.locator('#game-aside [data-play-menu]').click();
+  await expect(page.locator('#game-aside [data-play-overlay]')).toContainText('Jugar con ventana flotante');
+  await page.keyboard.press('Escape');
+
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  const panel = page.locator('#game-page [role=tabpanel]:not([hidden])');
+  await panel.locator('.guide-offline-card input[type=file]').setInputFiles({
+    name: 'acompanante.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(
+      'Puente norte\n============\nBuscá la llave de bronce debajo de la estatua.\n\nTorre sur\n=========\nSubí por la escalera espiral.',
+      'utf8'
+    )
+  });
+
+  await panel.locator('.guide-hints-toolbar button', { hasText: 'Agregar pregunta' }).click();
+  const qForm = panel.locator('.guide-question-form');
+  await qForm.locator('input').nth(0).fill('¿Dónde está la llave de bronce?');
+  await qForm.locator('input').nth(1).fill('Mirá cerca de la estatua.');
+  await qForm.locator('textarea').fill('Debajo de la estatua.');
+  await qForm.locator('button[type=submit]').click();
+
+  await panel.locator('.guide-question-card button', { hasText: 'Ver pista 1' }).click();
+  await panel.locator('.guide-section-form input').fill('Puente norte');
+  await panel.locator('.guide-section-form button[type=submit]').click();
+
+  // QR para abrir la guía en el celular y apagado posterior.
+  await panel.locator('.guide-companion-actions button', { hasText: 'En el celular (QR)' }).click();
+  await expect(panel.locator('.guide-qr-svg')).toBeVisible();
+  await panel.locator('.guide-qr-info button', { hasText: 'Detener servidor celular' }).click();
+  await expect(panel.locator('.guide-qr-box')).toHaveCount(0);
+
+  // Volver a Inicio y comprobar progreso guardado en la fila Continuar.
+  await show(page, 'home');
+  const updatedTile = page.locator(`#home-shelves .shelf-track[data-shelf="continue"] .poster[data-key="${gameKey}"]`);
+  await expect(updatedTile.locator('.guide-continue-note')).toContainText('Puente norte · 1 pista vista');
+
+  // Ventana flotante dedicada: aviso pantalla completa, opacidad y lectura.
+  await page.goto('/guide-overlay.html?key=' + encodeURIComponent(gameKey));
+  await expect(page.locator('.guide-overlay-notice')).toContainText('ventana sin bordes');
+  await page.locator('.guide-overlay-notice button', { hasText: 'Entendido' }).click();
+  await expect(page.locator('.guide-overlay-notice')).toHaveCount(0);
+  await page.locator('#overlay-opacity').fill('80');
+  await page.locator('#overlay-opacity').dispatchEvent('change');
+  await expect(page.locator('#guide-overlay-app')).toContainText('¿Dónde está la llave de bronce?');
+
+  // Modo sala: abrir guía desde ficha del juego y navegar por tramos.
+  await openApp(page);
+  await page.evaluate(() => GMLGamepad.setBigScreen(true));
+  await page.locator(`.couch-tile[data-key="${gameKey}"]`).first().click();
+  const couchGuideBtn = page.locator('.couch-sheet [data-action="guide"]');
+  await expect(couchGuideBtn).toBeVisible();
+  await couchGuideBtn.click();
+  const dialog = page.locator('#couch-guide-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Puente norte');
+  await page.keyboard.press('PageDown');
+  await expect(dialog).toContainText('Torre sur');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ContextMenu');
+  await page.locator('.couch-menu .couch-action', { hasText: 'Salir del modo sala' }).click();
+
+  // Limpiar guía y marca de tramo del fixture.
+  await openGame(page, gameKey);
+  await page.locator('#game-page [role=tab]', { hasText: 'Guía' }).click();
+  await panel.locator('.guide-offline-actions button', { hasText: 'Quitar guía' }).click();
+  await expect(panel.locator('.guide-reader')).toHaveCount(0);
+  await panel.locator('.guide-section-form button', { hasText: 'Limpiar' }).click();
+});

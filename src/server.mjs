@@ -44,6 +44,7 @@ import { guidesRoutes } from './routes/guides.mjs';
 import { createNews } from './news.mjs';
 import { createAiClient } from './ai.mjs';
 import { companionDisplay, createGuides } from './guides.mjs';
+import { createGuideLan } from './guide-lan.mjs';
 import { createUpdates } from './updates.mjs';
 import { noAutoUpdate } from './auto-update.mjs';
 import { readFileSync } from 'node:fs';
@@ -866,9 +867,15 @@ export function createServer({
   onNews,
   // Visor auxiliar aislado para abrir guías externas (sólo en Electron).
   openGuideWindow = null,
+  // Ventana flotante compacta y atajos globales para leer guías en una sola pantalla (sólo en Electron).
+  openGuideOverlay = null,
+  closeGuideOverlay = null,
+  setGuideOverlayOpacity = null,
+  applyGuideShortcuts = null,
   autoUpdate = noAutoUpdate
 } = {}) {
   const router = createRouter();
+  let overlayState = { open: false, gameKey: null, shortcuts: null };
   async function connectedDisplays() {
     try {
       return describeDisplays(await listDisplays(), (await appSettings()).displayAliases);
@@ -895,6 +902,7 @@ export function createServer({
     });
     if (entry) tasks.emit('session', entry);
     tasks.emit('library', { reason: 'session' });
+    await guideLan.stopForGame(game.key).catch(() => {});
     onGameExit?.(game, entry);
   }
   const tracker = createSessionTracker({
@@ -1078,6 +1086,59 @@ export function createServer({
       }
       return { ok: true, opened: 'external', url, display: null };
     },
+    guideCompanion: {
+      async status() {
+        const settings = await guides.getCompanionSettings();
+        return {
+          ...settings,
+          overlaySupported: Boolean(openGuideOverlay),
+          overlayOpen: overlayState.open,
+          activeGameKey: overlayState.gameKey,
+          shortcuts: overlayState.shortcuts,
+          lan: guideLan.status()
+        };
+      },
+      async updateSettings(patch) {
+        const settings = await guides.updateCompanionSettings(patch);
+        if (setGuideOverlayOpacity) await setGuideOverlayOpacity(settings.opacity);
+        if (applyGuideShortcuts) overlayState.shortcuts = await applyGuideShortcuts(settings);
+        tasks.emit('guide-overlay', { type: 'settings', settings });
+        return deps.guideCompanion.status();
+      },
+      async openOverlay(game, { inactive = false, toggle = false } = {}) {
+        const settings = await guides.getCompanionSettings();
+        overlayState.gameKey = game.key;
+        const url = `/guide-overlay.html?key=${encodeURIComponent(game.key)}`;
+        if (openGuideOverlay) {
+          const res = await openGuideOverlay({
+            gameKey: game.key,
+            title: game.name,
+            opacity: settings.opacity,
+            inactive,
+            toggle
+          });
+          overlayState.open = Boolean(res?.open ?? true);
+          tasks.emit('guide-overlay', { type: 'open', gameKey: game.key, open: overlayState.open });
+          return { ok: true, opened: 'overlay', open: overlayState.open, gameKey: game.key, url };
+        }
+        overlayState.open = true;
+        tasks.emit('guide-overlay', { type: 'open', gameKey: game.key, open: true });
+        return { ok: true, opened: 'browser', open: true, gameKey: game.key, url };
+      },
+      async closeOverlay() {
+        await closeGuideOverlay?.();
+        overlayState.open = false;
+        tasks.emit('guide-overlay', { type: 'close', open: false });
+        return { ok: true, open: false };
+      },
+      async nextHint({ key = null, sectionId = null, questionId = null } = {}) {
+        const targetKey = typeof key === 'string' && key.trim() ? key.trim() : overlayState.gameKey;
+        if (!targetKey) return { ok: false, reason: 'no-game' };
+        const result = await guides.revealNextHint(targetKey, { sectionId, questionId });
+        if (result.ok) tasks.emit('guide-overlay', { type: 'hint', ...result });
+        return result;
+      }
+    },
     saveScreenshotFolders,
     async openScreenshot(id) {
       const file = await screenshots.path(id);
@@ -1191,6 +1252,9 @@ export function createServer({
   newsRoutes(router, deps);
   guidesRoutes(router, deps);
 
+  const guideLan = createGuideLan({ guides, findGame: (key) => deps.findGame(key), log });
+  deps.guideLan = guideLan;
+
   const server = http.createServer(async (req, res) => {
     try {
       if (!trustedRequest(req)) return send(res, 403, JSON.stringify({ error: 'Solicitud no permitida.' }));
@@ -1221,6 +1285,17 @@ export function createServer({
       return { ...result, game };
     }
   };
+  server.guides = {
+    getCompanionSettings: () => guides.getCompanionSettings(),
+    setShortcutStatus: (status) => {
+      overlayState.shortcuts = status;
+    },
+    triggerNextHint: () => deps.guideCompanion.nextHint(),
+    activeGameKey: () => overlayState.gameKey,
+    setOverlayOpen: (open) => {
+      overlayState.open = Boolean(open);
+    }
+  };
   // Una sesión medida o una sincronización de Steam cambian cuáles son los últimos juegos jugados.
   const unsubscribe = tasks.subscribe((type, data) => {
     if (type === 'library') onLibraryChange?.();
@@ -1230,6 +1305,7 @@ export function createServer({
     unsubscribe();
     steam.close();
     tracker.stop();
+    guideLan.stop().catch(() => {});
   });
   return server;
 }

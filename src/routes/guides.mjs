@@ -1,5 +1,6 @@
-// Rutas HTTP para guías de pistas y soluciones (Fases 1 a 3): enlaces, progreso («Acá estoy» y pistas vistas),
-// notas, StrategyWiki, importación de archivos, editor manual de preguntas, IA opcional y visor auxiliar.
+// Rutas HTTP para guías de pistas y soluciones (Fases 1 a 4): enlaces, progreso («Acá estoy» y pistas vistas),
+// notas, StrategyWiki, importación de archivos, editor manual de preguntas, IA opcional, visor auxiliar,
+// ventana flotante siempre visible, atajos globales y micro-servidor LAN por código QR.
 import { badGateway, badRequest, check, notFound, withStatus } from '../http.mjs';
 import { guideLinksFor, safeGuideUrl } from '../guide-sources/links.mjs';
 
@@ -10,6 +11,31 @@ const QUESTION_ID = /^[\w-]{1,40}$/;
 
 export function guidesRoutes(router, d) {
   router.get('/api/guides', () => d.guides.summary());
+
+  router.get('/api/guides/companion', () => d.guideCompanion.status());
+  router.put('/api/guides/companion/settings', async ({ body }) => d.guideCompanion.updateSettings(await body()));
+  router.post('/api/guides/companion/next-hint', async ({ body }) => d.guideCompanion.nextHint(await body()));
+  router.delete('/api/guides/overlay', () => d.guideCompanion.closeOverlay());
+
+  router.get('/api/guides/lan', () => d.guideLan.status());
+  router.post('/api/guides/lan/start', async ({ body }) => {
+    const payload = await body();
+    const key = check.string(payload.key, 'Falta indicar el juego.', { max: 200 });
+    const game = await d.findGame(key);
+    if (!game) throw notFound('Juego no encontrado.');
+    return withStatus(201, await d.guideLan.start(game.key));
+  });
+  router.post('/api/guides/lan/stop', () => d.guideLan.stop());
+
+  router.post('/api/guides/game/:key/overlay', async ({ params, body }) => {
+    const game = await d.findGame(params.key);
+    if (!game) throw notFound('Juego no encontrado.');
+    const payload = await body();
+    return d.guideCompanion.openOverlay(game, {
+      inactive: payload.inactive === true,
+      toggle: payload.toggle === true
+    });
+  });
 
   router.get('/api/guides/ai', () => d.ai.status());
   router.put('/api/guides/ai', async ({ body }) => {

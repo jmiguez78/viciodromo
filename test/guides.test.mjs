@@ -14,7 +14,16 @@ import {
 } from '../src/guide-sources/strategywiki.mjs';
 import { htmlToMarkdown, splitHtmlIntoSections, stripUnsafe } from '../src/guide-sanitize.mjs';
 import { detectMarkdownSections, detectTxtSections, importGuideFile } from '../src/guide-import.mjs';
-import { applyAntiSpoiler, cleanCaptureIds, companionDisplay, createGuides, nightlyGuides } from '../src/guides.mjs';
+import {
+  applyAntiSpoiler,
+  cleanCaptureIds,
+  companionDisplay,
+  createGuides,
+  nightlyGuides,
+  normalizeCompanionSettings,
+  validateAccelerator
+} from '../src/guides.mjs';
+import { createGuideLan, detectLanIp, encodeQrMatrix, renderQrSvg } from '../src/guide-lan.mjs';
 import { createAiClient } from '../src/ai.mjs';
 import {
   askAboutGuide,
@@ -709,5 +718,176 @@ test('API Fase 3: editor manual de preguntas, revelado progresivo, IA simulada y
     assert.equal(askMiss.covered, false);
   } finally {
     await fs.rm(aiDir, { recursive: true, force: true });
+  }
+});
+
+test('Fase 4: atajos globales, revealNextHint, summary.progress y guide-lan QR', async () => {
+  const game = catalog.games[0];
+  assert.equal(validateAccelerator('ctrl+alt+g'), 'Control+Alt+G');
+  assert.equal(validateAccelerator('CommandOrControl+Shift+F5'), 'CommandOrControl+Shift+F5');
+  assert.equal(validateAccelerator(''), '');
+  assert.throws(() => validateAccelerator('G'), /modificador/);
+  assert.throws(() => validateAccelerator('Ctrl+Ctrl+G'), /repitas/);
+  assert.throws(
+    () =>
+      normalizeCompanionSettings({
+        toggleShortcut: 'Alt+G',
+        nextHintShortcut: 'Alt+G'
+      }),
+    /iguales/
+  );
+
+  // QR SVG puro sin dependencias e IP LAN
+  const qr = encodeQrMatrix('http://192.168.1.25:47322/pair?t=abc123');
+  assert.ok(qr.size >= 29 && qr.modules.length === qr.size);
+  const svg = renderQrSvg(qr);
+  assert.match(svg, /^<svg /);
+  assert.match(svg, /<rect /);
+  assert.equal(
+    detectLanIp({
+      Loopback: [{ family: 'IPv4', internal: true, address: '127.0.0.1' }],
+      APIPA: [{ family: 'IPv4', internal: false, address: '169.254.10.1' }],
+      WiFi: [{ family: 'IPv4', internal: false, address: '192.168.0.44' }]
+    }),
+    '192.168.0.44'
+  );
+
+  const f4Dir = await fs.mkdtemp(path.join(os.tmpdir(), 'gml-guides-f4-'));
+  try {
+    const f4Guides = createGuides({ dataDir: f4Dir, offline: true });
+    await f4Guides.updateCompanionSettings({ opacity: 0.75, toggleShortcut: 'Ctrl+Alt+O' });
+    const loadedComp = await f4Guides.getCompanionSettings();
+    assert.equal(loadedComp.opacity, 0.75);
+    assert.equal(loadedComp.toggleShortcut, 'Control+Alt+O');
+
+    const imported = await f4Guides.importFile(game, {
+      filename: 'ruta.txt',
+      content: 'Zona Uno\n========\nUsá el gancho para cruzar el puente.\n\nZona Dos\n========\nSubí la escalera.'
+    });
+    const gid = imported.activeGuide.id;
+    const secId = imported.activeGuide.sections[0].id;
+    await f4Guides.addQuestion(game.key, gid, secId, {
+      title: '¿Cómo cruzo?',
+      hints: ['Mirá arriba de la puerta', 'Necesitás el gancho'],
+      answerQuote: 'Usá el gancho para cruzar el puente.'
+    });
+    await f4Guides.updateProgress(game.key, { currentSectionId: secId });
+
+    // Avance de pistas por atajo sin revelar la respuesta automáticamente
+    const h1 = await f4Guides.revealNextHint(game.key);
+    assert.equal(h1.ok, true);
+    assert.equal(h1.hintIndex, 1);
+    assert.equal(h1.hint, 'Mirá arriba de la puerta');
+
+    const h2 = await f4Guides.revealNextHint(game.key);
+    assert.equal(h2.ok, true);
+    assert.equal(h2.hintIndex, 2);
+    assert.equal(h2.exhausted, true);
+
+    const h3 = await f4Guides.revealNextHint(game.key);
+    assert.equal(h3.ok, false);
+    assert.equal(h3.reason, 'exhausted');
+    const afterCheck = await f4Guides.forGame(game);
+    assert.equal(afterCheck.activeGuide.sections[0].questions[0].answerRevealed, false);
+
+    // summary() incluye progress para la fila Continuar
+    const sum = await f4Guides.summary();
+    assert.deepEqual(sum.progress[game.key], { currentSection: 'Zona Uno', hintsViewed: 2 });
+
+    // Servidor LAN efímero en loopback
+    const lan = createGuideLan({
+      guides: f4Guides,
+      findGame: async (k) => (k === game.key ? game : null),
+      host: '127.0.0.1',
+      lanIp: '127.0.0.1'
+    });
+    const started = await lan.start(game.key);
+    assert.equal(started.active, true);
+    assert.ok(started.url);
+
+    // Sin cookie -> 403
+    const base = `http://127.0.0.1:${started.port}`;
+    const unauth = await fetch(`${base}/api/guide`);
+    assert.equal(unauth.status, 403);
+
+    // Canje del token de un solo uso -> cookie HttpOnly y redirect
+    const pairRes = await fetch(started.url, { redirect: 'manual' });
+    assert.equal(pairRes.status, 302);
+    const cookie = pairRes.headers.get('set-cookie')?.split(';')[0];
+    assert.match(cookie, /^vicio_guide_sid=/);
+
+    // Segundo intento con el mismo token -> 403
+    const reuseRes = await fetch(started.url, { redirect: 'manual' });
+    assert.equal(reuseRes.status, 403);
+
+    // Con cookie: /api/guide y /api/progress funcionan
+    const apiGuide = await fetch(`${base}/api/guide`, { headers: { cookie } });
+    assert.equal(apiGuide.status, 200);
+    const mobileView = await apiGuide.json();
+    assert.equal(mobileView.key, game.key);
+
+    const mobileProg = await fetch(`${base}/api/progress`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'solution' })
+    });
+    assert.equal(mobileProg.status, 200);
+    assert.equal((await mobileProg.json()).progress.mode, 'solution');
+
+    // Al cerrar el juego se apaga automáticamente
+    await lan.stopForGame(game.key);
+    assert.equal(lan.status().active, false);
+  } finally {
+    await fs.rm(f4Dir, { recursive: true, force: true });
+  }
+});
+
+test('API Fase 4: endpoints HTTP de acompañante, overlay y servidor LAN', async () => {
+  const game = catalog.games[0];
+  let overlayCalls = [];
+  const f4Server = createServer({
+    openGuideOverlay: async (opts) => {
+      overlayCalls.push(opts);
+      return { open: true };
+    }
+  });
+  await new Promise((resolve) => f4Server.listen(0, '127.0.0.1', resolve));
+  const f4Base = `http://127.0.0.1:${f4Server.address().port}`;
+  try {
+    const comp0 = await fetch(`${f4Base}/api/guides/companion`).then((r) => r.json());
+    assert.equal(comp0.overlaySupported, true);
+    assert.equal(comp0.lan.active, false);
+
+    const upd = await fetch(`${f4Base}/api/guides/companion/settings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ opacity: 0.65 })
+    }).then((r) => r.json());
+    assert.equal(upd.opacity, 0.65);
+
+    const ov = await fetch(`${f4Base}/api/guides/game/${encodeURIComponent(game.key)}/overlay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ inactive: true })
+    }).then((r) => r.json());
+    assert.equal(ov.opened, 'overlay');
+    assert.equal(overlayCalls.length, 1);
+    assert.equal(overlayCalls[0].opacity, 0.65);
+
+    const lanStart = await fetch(`${f4Base}/api/guides/lan/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key: game.key })
+    });
+    assert.equal(lanStart.status, 201);
+    const lanBody = await lanStart.json();
+    assert.equal(lanBody.active, true);
+    assert.ok(lanBody.qr?.size >= 21);
+
+    const lanStop = await fetch(`${f4Base}/api/guides/lan/stop`, { method: 'POST' }).then((r) => r.json());
+    assert.equal(lanStop.active, false);
+  } finally {
+    f4Server.closeAllConnections?.();
+    await new Promise((resolve) => f4Server.close(resolve));
   }
 });

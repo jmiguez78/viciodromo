@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 0.48.0
+
+**Guías de pistas y soluciones, cuarta parte: jugar con la guía al lado.**
+
+- **Ventana flotante siempre visible (1 pantalla).** Nueva ventana compacta por encima del juego con control de transparencia (35 % a 100 %) y aviso sobre pantalla completa exclusiva. Disponible también desde **Jugar ▾ → Jugar con ventana flotante** aun con un solo monitor.
+- **Atajos globales configurables.** Combinaciones personalizables para mostrar u ocultar la ventana flotante (`Ctrl+Alt+G`) o revelar la pista siguiente (`Ctrl+Alt+H`) sin sacar el foco del juego.
+- **Guía en el celular por código QR.** Micro-servidor efímero separado en la red local (apagado por defecto, con código QR propio, token de un solo uso canjeable por cookie de sesión y apagado automático al cerrar el juego).
+- **Inicio y modo sala.** La fila **Continuar** de Inicio muestra el tramo guardado y la cantidad de pistas vistas; en modo sala, la ficha suma **Guía y pistas** con navegación completa por mando (tramos con `LB`/`RB`, pistas y solución sin salir de la tele).
+
 ## 0.47.0
 
 **Guías de pistas y soluciones, tercera parte: pistas escalonadas e IA opcional.**

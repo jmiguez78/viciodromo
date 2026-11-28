@@ -187,6 +187,68 @@ for (const theme of ['dark', 'light']) {
       await page.waitForSelector('#game-page .guide-note-item');
       expect(await audit(page)).toEqual([]);
     });
+    test('Guía flotante', async ({ page }) => {
+      await page.route('**/api/guides/game/**', (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({
+              json: {
+                key: 'steam:900000',
+                name: 'Ámbar',
+                links: [],
+                progress: {
+                  currentSection: 'Capítulo 4',
+                  currentSectionId: 's01',
+                  activeGuideId: 'file-a11y',
+                  mode: 'hints',
+                  lastUrl: null,
+                  showFutureTitles: false,
+                  skipSpoilerConfirm: false,
+                  revealedSections: [],
+                  updatedAt: null
+                },
+                guides: [],
+                activeGuide: {
+                  id: 'file-a11y',
+                  gameKey: 'steam:900000',
+                  title: 'Guía flotante',
+                  sections: [
+                    {
+                      id: 's01',
+                      order: 1,
+                      displayTitle: 'Capítulo 4',
+                      solution: 'Texto de solución.',
+                      questions: [
+                        {
+                          id: 'q1',
+                          title: '¿Cómo abro el cofre?',
+                          origin: 'manual',
+                          edited: false,
+                          totalHints: 2,
+                          revealedCount: 1,
+                          visibleHints: ['Mirá detrás de la columna.'],
+                          answerRevealed: false,
+                          answerQuote: ''
+                        }
+                      ],
+                      isFuture: false,
+                      locked: false
+                    }
+                  ]
+                },
+                notes: []
+              }
+            })
+          : route.continue()
+      );
+      await page.goto('/guide-overlay.html?key=steam%3A900000');
+      await page.waitForSelector('.guide-overlay-head h1');
+      if (theme === 'light') {
+        await page.evaluate(() => {
+          document.documentElement.dataset.theme = 'light';
+        });
+      }
+      expect(await audit(page)).toEqual([]);
+    });
     test('Tu actividad', async ({ page }) => {
       await openApp(page);
       await show(page, 'activity');

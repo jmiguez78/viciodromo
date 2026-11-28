@@ -23,6 +23,12 @@ import {
 } from './guide-hints.mjs';
 
 export const GUIDE_MODES = ['hints', 'solution'];
+export const DEFAULT_COMPANION = {
+  opacity: 0.92,
+  shortcutsEnabled: true,
+  toggleShortcut: 'CommandOrControl+Alt+G',
+  nextHintShortcut: 'CommandOrControl+Alt+H'
+};
 const MAX_SECTION_LENGTH = 120;
 const MAX_NOTE_LENGTH = 4000;
 const MAX_CAPTURES_PER_NOTE = 8;
@@ -33,7 +39,91 @@ const GUIDE_ID = /^[a-z0-9][a-z0-9_-]{1,80}$/i;
 const AVAILABILITY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const ARCADE_AVAILABILITY_LIMIT = 300;
 
-const emptyProgressStore = () => ({ games: {} });
+const ACCEL_MODIFIERS = {
+  cmdorctrl: 'CommandOrControl',
+  commandorcontrol: 'CommandOrControl',
+  ctrl: 'Control',
+  control: 'Control',
+  alt: 'Alt',
+  shift: 'Shift',
+  super: 'Super',
+  meta: 'Super',
+  cmd: 'Super',
+  command: 'Super'
+};
+
+const ACCEL_SPECIAL_KEYS = {
+  space: 'Space',
+  tab: 'Tab',
+  up: 'Up',
+  down: 'Down',
+  left: 'Left',
+  right: 'Right',
+  home: 'Home',
+  end: 'End',
+  pageup: 'PageUp',
+  pagedown: 'PageDown',
+  plus: 'Plus',
+  minus: 'Minus',
+  insert: 'Insert',
+  delete: 'Delete'
+};
+
+export function validateAccelerator(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value !== 'string') throw badRequest('El atajo debe ser texto.');
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const parts = trimmed
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) {
+    throw badRequest('El atajo debe incluir al menos un modificador (Ctrl, Alt o Shift) y una tecla.');
+  }
+  const keyRaw = parts[parts.length - 1];
+  const modRaw = parts.slice(0, -1);
+  const mods = [];
+  const seen = new Set();
+  for (const mod of modRaw) {
+    const canonical = ACCEL_MODIFIERS[mod.toLowerCase()];
+    if (!canonical) throw badRequest(`Modificador no reconocido en atajo: ${mod}.`);
+    const group = canonical === 'Control' || canonical === 'CommandOrControl' ? 'Ctrl' : canonical;
+    if (seen.has(group)) throw badRequest('No repitas modificadores en el mismo atajo.');
+    seen.add(group);
+    mods.push(canonical);
+  }
+  let canonicalKey = null;
+  if (/^[a-z0-9]$/i.test(keyRaw)) {
+    canonicalKey = keyRaw.toUpperCase();
+  } else if (/^f([1-9]|1[0-2])$/i.test(keyRaw)) {
+    canonicalKey = keyRaw.toUpperCase();
+  } else if (ACCEL_SPECIAL_KEYS[keyRaw.toLowerCase()]) {
+    canonicalKey = ACCEL_SPECIAL_KEYS[keyRaw.toLowerCase()];
+  }
+  if (!canonicalKey) throw badRequest(`Tecla no válida para atajo global: ${keyRaw}.`);
+  return [...mods, canonicalKey].join('+');
+}
+
+export function normalizeCompanionSettings(input = {}) {
+  const src = input && typeof input === 'object' ? input : {};
+  const rawOpacity = Number(src.opacity);
+  const opacity = Number.isFinite(rawOpacity)
+    ? Math.round(Math.max(0.35, Math.min(1, rawOpacity)) * 100) / 100
+    : DEFAULT_COMPANION.opacity;
+  const shortcutsEnabled =
+    typeof src.shortcutsEnabled === 'boolean' ? src.shortcutsEnabled : DEFAULT_COMPANION.shortcutsEnabled;
+  const toggleShortcut =
+    'toggleShortcut' in src ? validateAccelerator(src.toggleShortcut) : DEFAULT_COMPANION.toggleShortcut;
+  const nextHintShortcut =
+    'nextHintShortcut' in src ? validateAccelerator(src.nextHintShortcut) : DEFAULT_COMPANION.nextHintShortcut;
+  if (toggleShortcut && nextHintShortcut && toggleShortcut === nextHintShortcut) {
+    throw badRequest('Los atajos para mostrar la ventana y pedir pista no pueden ser iguales.');
+  }
+  return { opacity, shortcutsEnabled, toggleShortcut, nextHintShortcut };
+}
+
+const emptyProgressStore = () => ({ games: {}, companion: { ...DEFAULT_COMPANION } });
 const emptyIndexStore = () => ({ guides: {}, availability: {} });
 
 const cleanSection = (value) => (typeof value === 'string' ? value.trim().slice(0, MAX_SECTION_LENGTH) : '');
@@ -181,7 +271,8 @@ export function createGuides({
     fallback: emptyProgressStore,
     migrations: {
       1: (saved) => ({
-        games: saved?.games && typeof saved.games === 'object' ? saved.games : {}
+        games: saved?.games && typeof saved.games === 'object' ? saved.games : {},
+        companion: normalizeCompanionSettings(saved?.companion)
       })
     }
   });
@@ -198,11 +289,16 @@ export function createGuides({
 
   const readProgress = async () => {
     const data = await progressFile.read();
-    return data?.games && typeof data.games === 'object' ? data : emptyProgressStore();
+    return data?.games && typeof data.games === 'object'
+      ? { games: data.games, companion: data.companion }
+      : emptyProgressStore();
   };
   const updateProgressStore = (change) =>
     progressFile.update((store) => {
-      const next = store?.games && typeof store.games === 'object' ? store : emptyProgressStore();
+      const next =
+        store?.games && typeof store.games === 'object'
+          ? { ...store, games: store.games, companion: store.companion }
+          : emptyProgressStore();
       return change(next) ?? next;
     });
 
@@ -242,7 +338,7 @@ export function createGuides({
   }
 
   async function summary() {
-    const idx = await readIndex();
+    const [idx, prog] = await Promise.all([readIndex(), readProgress()]);
     const withGuide = [
       ...new Set(
         Object.values(idx.guides)
@@ -253,7 +349,18 @@ export function createGuides({
     const available = Object.entries(idx.availability)
       .filter(([, entry]) => entry?.strategywiki?.available === true)
       .map(([key]) => key);
-    return { withGuide, available };
+    const progress = {};
+    for (const [gameKey, raw] of Object.entries(prog.games ?? {})) {
+      const entry = normalizeEntry(raw);
+      const hintsViewed = Object.values(entry.revealedHints).reduce((sum, n) => sum + (Number(n) || 0), 0);
+      if (entry.currentSection || hintsViewed > 0) {
+        progress[gameKey] = {
+          currentSection: entry.currentSection,
+          hintsViewed
+        };
+      }
+    }
+    return { withGuide, available, progress };
   }
 
   async function saveGuideItem(guide) {
@@ -456,6 +563,16 @@ export function createGuides({
       savedProgress = publicProgress(current);
       return store;
     });
+    if (
+      'currentSection' in patch ||
+      'currentSectionId' in patch ||
+      'setHintCount' in patch ||
+      'revealAnswer' in patch ||
+      'hideQuestion' in patch ||
+      patch.resetRevealed === true
+    ) {
+      onChange(await summary());
+    }
     return savedProgress;
   }
 
@@ -748,12 +865,91 @@ export function createGuides({
     return { checked: results.size, found };
   }
 
+  async function getCompanionSettings() {
+    const prog = await readProgress();
+    return normalizeCompanionSettings(prog.companion);
+  }
+
+  async function updateCompanionSettings(patch = {}) {
+    let saved = null;
+    await updateProgressStore((store) => {
+      const current = normalizeCompanionSettings(store.companion);
+      const next = normalizeCompanionSettings({ ...current, ...(patch && typeof patch === 'object' ? patch : {}) });
+      store.companion = next;
+      saved = next;
+      return store;
+    });
+    return saved;
+  }
+
+  async function revealNextHint(gameKey, { sectionId = null, questionId = null } = {}) {
+    const [progStore, idx] = await Promise.all([readProgress(), readIndex()]);
+    const entry = normalizeEntry(progStore.games[gameKey]);
+    const guides = Object.values(idx.guides)
+      .filter((item) => item.gameKey === gameKey)
+      .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')));
+    const activeId =
+      (entry.activeGuideId && guides.some((g) => g.id === entry.activeGuideId) ? entry.activeGuideId : guides[0]?.id) ??
+      null;
+    if (!activeId) return { ok: false, reason: 'no-guide', gameKey };
+    const item = await readItem(activeId).catch(() => null);
+    if (!item || !Array.isArray(item.sections)) return { ok: false, reason: 'no-guide', gameKey };
+    const projected = applyAntiSpoiler(item.sections, entry);
+    const unlockedSections = projected.filter((s) => !s.locked);
+    const targetSec =
+      (sectionId && unlockedSections.find((s) => s.id === sectionId)) ||
+      (entry.currentSectionId && unlockedSections.find((s) => s.id === entry.currentSectionId)) ||
+      unlockedSections[0] ||
+      null;
+    if (!targetSec || !targetSec.questions?.length) {
+      return { ok: false, reason: 'no-questions', gameKey, sectionId: targetSec?.id ?? null };
+    }
+    const rawSec = item.sections.find((s) => s.id === targetSec.id);
+    const qProjected =
+      (questionId && targetSec.questions.find((q) => q.id === questionId)) ||
+      targetSec.questions.find((q) => q.revealedCount < q.totalHints) ||
+      targetSec.questions[0];
+    const qRaw = (rawSec?.questions ?? []).find((q) => q.id === qProjected.id);
+    const hints = Array.isArray(qRaw?.hints) ? qRaw.hints : [];
+    const currentCount = qProjected.revealedCount;
+    if (currentCount >= hints.length) {
+      return {
+        ok: false,
+        reason: 'exhausted',
+        gameKey,
+        sectionId: targetSec.id,
+        questionId: qProjected.id,
+        questionTitle: qProjected.title,
+        answerAvailable: Boolean(qRaw?.answerQuote)
+      };
+    }
+    const nextCount = currentCount + 1;
+    await updateProgress(gameKey, {
+      setHintCount: { sectionId: targetSec.id, questionId: qProjected.id, count: nextCount }
+    });
+    return {
+      ok: true,
+      gameKey,
+      sectionId: targetSec.id,
+      sectionTitle: targetSec.displayTitle,
+      questionId: qProjected.id,
+      questionTitle: qProjected.title,
+      hintIndex: nextCount,
+      totalHints: hints.length,
+      hint: hints[nextCount - 1],
+      exhausted: nextCount >= hints.length
+    };
+  }
+
   return {
     filePath,
     indexPath,
     summary,
     forGame,
     updateProgress,
+    getCompanionSettings,
+    updateCompanionSettings,
+    revealNextHint,
     addNote,
     updateNote,
     deleteNote,

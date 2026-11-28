@@ -1,6 +1,6 @@
-// Guías de pistas y soluciones (Fases 1 a 3): enlaces directos en visor auxiliar o navegador, guías sin conexión
+// Guías de pistas y soluciones (Fases 1 a 4): enlaces directos en visor auxiliar o navegador, guías sin conexión
 // (StrategyWiki e importación .txt/.md/.html), antispoiler por tramo, modo Pistas escalonadas, editor manual,
-// IA opcional (pistear, preguntar, traducir), marca «Acá estoy» y notas con capturas.
+// IA opcional (pistear, preguntar, traducir), ventana flotante, QR celular, Continuar y modo sala con mando.
 import { request } from './api.js';
 import { openMediaViewer } from './details.js';
 import { notify, notifyError } from './feedback.js';
@@ -19,14 +19,15 @@ const dateText = (value) =>
 const thumbUrl = (id) => '/api/screenshots/file/' + encodeURIComponent(id) + '?thumb=1';
 const fullUrl = (id) => '/api/screenshots/file/' + encodeURIComponent(id);
 
-let guideSummary = { withGuide: new Set(), available: new Set() };
+let guideSummary = { withGuide: new Set(), available: new Set(), progress: {} };
 export const hasGuide = (key) => guideSummary.withGuide.has(key);
 
 function applyGuideSummary(data) {
   if (!data) return;
   guideSummary = {
     withGuide: new Set(data.withGuide ?? []),
-    available: new Set(data.available ?? [])
+    available: new Set(data.available ?? []),
+    progress: data.progress && typeof data.progress === 'object' ? data.progress : {}
   };
   paintGuideBadges();
 }
@@ -59,18 +60,404 @@ export function paintGuideBadges() {
         art.append(badge);
       });
     }
+    const continueTrack = document.querySelector('#home-shelves .shelf-track[data-shelf="continue"]');
+    if (continueTrack) {
+      continueTrack.querySelectorAll('.poster[data-key]').forEach((tile) => {
+        const key = tile.dataset.key;
+        const entry = guideSummary.progress[key];
+        const parts = [];
+        if (entry?.currentSection) parts.push(entry.currentSection);
+        if (entry?.hintsViewed > 0) {
+          parts.push(entry.hintsViewed + (entry.hintsViewed === 1 ? ' pista vista' : ' pistas vistas'));
+        }
+        const text = parts.join(' · ');
+        const existing = tile.querySelector('.guide-continue-note');
+        if (!text) {
+          existing?.remove();
+          return;
+        }
+        const note = existing || document.createElement('p');
+        note.className = 'guide-continue-note';
+        if (note.textContent !== text) note.textContent = text;
+        if (!existing) tile.querySelector('.poster-body')?.append(note);
+      });
+    }
   });
+}
+
+function buildQrSvgElement(qr) {
+  const quiet = 4;
+  const total = qr.size + quiet * 2;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${total} ${total}`);
+  svg.setAttribute('class', 'guide-qr-svg');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Código QR para abrir la guía en el celular');
+  const bg = document.createElementNS(ns, 'rect');
+  bg.setAttribute('width', String(total));
+  bg.setAttribute('height', String(total));
+  bg.setAttribute('fill', '#ffffff');
+  svg.append(bg);
+  const group = document.createElementNS(ns, 'g');
+  group.setAttribute('fill', '#0b0c12');
+  for (let r = 0; r < qr.size; r++) {
+    for (let c = 0; c < qr.size; c++) {
+      if (!qr.modules[r][c]) continue;
+      const rect = document.createElementNS(ns, 'rect');
+      rect.setAttribute('x', String(c + quiet));
+      rect.setAttribute('y', String(r + quiet));
+      rect.setAttribute('width', '1');
+      rect.setAttribute('height', '1');
+      group.append(rect);
+    }
+  }
+  svg.append(group);
+  return svg;
+}
+
+let couchGuideDialog = null;
+
+async function openCouchGuide(gameKey) {
+  if (!gameKey) return;
+  const couch = document.querySelector('#couch');
+  if (!couch) return;
+  if (!couchGuideDialog) {
+    couchGuideDialog = document.createElement('dialog');
+    couchGuideDialog.id = 'couch-guide-dialog';
+    couchGuideDialog.className = 'couch-guide';
+    couchGuideDialog.setAttribute('aria-modal', 'true');
+    couchGuideDialog.setAttribute('aria-label', 'Guía del juego');
+    couchGuideDialog.addEventListener('close', () => {
+      document.querySelector('#couch .couch-sheet [data-action="guide"]')?.focus({ preventScroll: true });
+    });
+    couch.append(couchGuideDialog);
+  }
+
+  let data = null;
+  let selectedId = null;
+  let confirmSol = false;
+
+  const renderDialog = () => {
+    couchGuideDialog.replaceChildren();
+    const shell = document.createElement('div');
+    shell.className = 'couch-guide-shell';
+    const head = document.createElement('header');
+    head.className = 'couch-guide-head';
+    const h2 = document.createElement('h2');
+    h2.textContent = (data?.name || 'Juego') + ' · Guía';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'couch-action';
+    closeBtn.textContent = 'Volver';
+    closeBtn.onclick = () => couchGuideDialog.close();
+    head.append(h2, closeBtn);
+
+    const legend = document.createElement('p');
+    legend.className = 'couch-guide-legend';
+    legend.textContent =
+      'LB / RB: cambiar tramo · ↑ / ↓: elegir · A: revelar · X: Pistas / Solución · Y: Acá estoy · B: volver';
+    shell.append(head, legend);
+
+    const sections = data?.activeGuide?.sections ?? [];
+    if (!sections.length) {
+      const card = document.createElement('div');
+      card.className = 'couch-guide-card';
+      const p = document.createElement('p');
+      p.textContent = data?.progress?.currentSection
+        ? 'Tramo guardado: ' + data.progress.currentSection + '. No hay guía sin conexión cargada para este juego.'
+        : 'Este juego todavía no tiene una guía sin conexión cargada.';
+      card.append(p);
+      shell.append(card);
+      couchGuideDialog.append(shell);
+      closeBtn.focus({ preventScroll: true });
+      return;
+    }
+
+    if (!selectedId || !sections.some((s) => s.id === selectedId)) {
+      selectedId = data.progress.currentSectionId || sections[0].id;
+    }
+    const idx = Math.max(
+      0,
+      sections.findIndex((s) => s.id === selectedId)
+    );
+    const sec = sections[idx];
+    const mode = data.progress.mode === 'solution' ? 'solution' : 'hints';
+
+    const navBar = document.createElement('div');
+    navBar.className = 'guide-overlay-row';
+    const prevSec = document.createElement('button');
+    prevSec.type = 'button';
+    prevSec.className = 'couch-action';
+    prevSec.textContent = '◀ Tramo anterior';
+    prevSec.disabled = idx <= 0;
+    prevSec.onclick = () => {
+      selectedId = sections[idx - 1].id;
+      renderDialog();
+    };
+    const nextSec = document.createElement('button');
+    nextSec.type = 'button';
+    nextSec.className = 'couch-action';
+    nextSec.textContent = 'Siguiente tramo ▶';
+    nextSec.disabled = idx >= sections.length - 1;
+    nextSec.onclick = () => {
+      selectedId = sections[idx + 1].id;
+      renderDialog();
+    };
+    const hereBtn = document.createElement('button');
+    hereBtn.type = 'button';
+    hereBtn.className = 'couch-action';
+    hereBtn.textContent = sec.id === data.progress.currentSectionId ? 'Estás acá' : 'Marcar «Acá estoy»';
+    hereBtn.onclick = async () => {
+      await request(guideUrl(gameKey) + '/progress', jsonRequest('PUT', { currentSectionId: sec.id }));
+      data = await request(guideUrl(gameKey));
+      renderDialog();
+    };
+    const modeBtn = document.createElement('button');
+    modeBtn.type = 'button';
+    modeBtn.className = 'couch-action';
+    modeBtn.textContent = mode === 'hints' ? 'Pasar a Solución' : 'Volver a Pistas';
+    modeBtn.onclick = async () => {
+      if (mode === 'solution') {
+        await request(guideUrl(gameKey) + '/progress', jsonRequest('PUT', { mode: 'hints' }));
+        data = await request(guideUrl(gameKey));
+        confirmSol = false;
+        renderDialog();
+      } else if (data.progress.skipSpoilerConfirm || confirmSol) {
+        await request(guideUrl(gameKey) + '/progress', jsonRequest('PUT', { mode: 'solution' }));
+        data = await request(guideUrl(gameKey));
+        confirmSol = false;
+        renderDialog();
+      } else {
+        confirmSol = true;
+        renderDialog();
+      }
+    };
+    navBar.append(prevSec, nextSec, hereBtn, modeBtn);
+    shell.append(navBar);
+
+    if (confirmSol) {
+      const warn = document.createElement('div');
+      warn.className = 'couch-guide-card';
+      const p = document.createElement('p');
+      p.textContent = '¿Confirmás ver la Solución completa de este tramo?';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'couch-action primary';
+      ok.textContent = 'Sí, mostrar solución';
+      ok.onclick = modeBtn.onclick;
+      warn.append(p, ok);
+      shell.append(warn);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'couch-guide-body';
+    const card = document.createElement('section');
+    card.className = 'couch-guide-card';
+    const secTitle = document.createElement('h3');
+    secTitle.textContent = sec.displayTitle + ' (' + (idx + 1) + ' de ' + sections.length + ')';
+    card.append(secTitle);
+
+    if (sec.locked) {
+      const p = document.createElement('p');
+      p.textContent = 'Tramo futuro oculto para evitar spoilers.';
+      const unlock = document.createElement('button');
+      unlock.type = 'button';
+      unlock.className = 'couch-action primary';
+      unlock.textContent = 'Mostrar este tramo';
+      unlock.onclick = async () => {
+        await request(guideUrl(gameKey) + '/progress', jsonRequest('PUT', { revealSectionId: sec.id }));
+        data = await request(guideUrl(gameKey));
+        renderDialog();
+      };
+      card.append(p, unlock);
+    } else if (mode === 'solution') {
+      const md = document.createElement('div');
+      renderSafeMarkdown(md, sec.solution || 'Sin texto de solución.');
+      card.append(md);
+    } else {
+      const qs = sec.questions ?? [];
+      if (!qs.length) {
+        const p = document.createElement('p');
+        p.textContent = 'No hay preguntas con pistas en este tramo.';
+        card.append(p);
+      }
+      qs.forEach((q) => {
+        const qTitle = document.createElement('h3');
+        qTitle.textContent = q.title;
+        card.append(qTitle);
+        if (q.visibleHints?.length) {
+          const ol = document.createElement('ol');
+          ol.className = 'couch-guide-hints';
+          q.visibleHints.forEach((hint) => {
+            const li = document.createElement('li');
+            li.textContent = hint;
+            ol.append(li);
+          });
+          card.append(ol);
+        }
+        if (q.answerRevealed && q.answerQuote) {
+          const ans = document.createElement('div');
+          ans.className = 'couch-guide-answer';
+          ans.textContent = q.answerQuote;
+          card.append(ans);
+        }
+        if (q.revealedCount < q.totalHints) {
+          const next = document.createElement('button');
+          next.type = 'button';
+          next.className = 'couch-action primary';
+          next.textContent = q.revealedCount === 0 ? 'Ver pista 1' : 'Otra pista';
+          next.onclick = async () => {
+            await request(
+              guideUrl(gameKey) + '/progress',
+              jsonRequest('PUT', {
+                setHintCount: { sectionId: sec.id, questionId: q.id, count: q.revealedCount + 1 }
+              })
+            );
+            data = await request(guideUrl(gameKey));
+            renderDialog();
+          };
+          card.append(next);
+        } else if (!q.answerRevealed) {
+          const ansBtn = document.createElement('button');
+          ansBtn.type = 'button';
+          ansBtn.className = 'couch-action';
+          ansBtn.textContent = 'Ver la respuesta';
+          ansBtn.onclick = async () => {
+            await request(
+              guideUrl(gameKey) + '/progress',
+              jsonRequest('PUT', { revealAnswer: { sectionId: sec.id, questionId: q.id } })
+            );
+            data = await request(guideUrl(gameKey));
+            renderDialog();
+          };
+          card.append(ansBtn);
+        }
+      });
+    }
+    body.append(card);
+    shell.append(body);
+    couchGuideDialog.append(shell);
+    (couchGuideDialog.querySelector('.couch-guide-body .couch-action') ?? closeBtn).focus({ preventScroll: true });
+  };
+
+  couchGuideDialog.onkeydown = (event) => {
+    const sections = data?.activeGuide?.sections ?? [];
+    if (event.key === 'Escape' || event.key === 'Backspace' || event.key === 'ContextMenu') {
+      event.preventDefault();
+      event.stopPropagation();
+      couchGuideDialog.close();
+      return;
+    }
+    if ((event.key === 'PageDown' || event.key === 'PageUp') && sections.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      const idx = Math.max(
+        0,
+        sections.findIndex((s) => s.id === selectedId)
+      );
+      const nextIdx = event.key === 'PageDown' ? Math.min(sections.length - 1, idx + 1) : Math.max(0, idx - 1);
+      selectedId = sections[nextIdx].id;
+      renderDialog();
+      return;
+    }
+    if (event.key.toLowerCase() === 'f' && sections.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      couchGuideDialog
+        .querySelector('.couch-guide-head + .couch-guide-legend + .guide-overlay-row button:last-child')
+        ?.click();
+      return;
+    }
+    if (event.key.toLowerCase() === 'y' && sections.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      const idx = Math.max(
+        0,
+        sections.findIndex((s) => s.id === selectedId)
+      );
+      request(guideUrl(gameKey) + '/progress', jsonRequest('PUT', { currentSectionId: sections[idx].id }))
+        .then(() => request(guideUrl(gameKey)))
+        .then((fresh) => {
+          data = fresh;
+          renderDialog();
+        })
+        .catch(() => {});
+      return;
+    }
+    if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)) {
+      const buttons = [...couchGuideDialog.querySelectorAll('button:not(:disabled)')];
+      if (!buttons.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = buttons.indexOf(document.activeElement);
+      const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : -1;
+      const target = current < 0 ? 0 : (current + step + buttons.length) % buttons.length;
+      buttons[target]?.focus({ preventScroll: true });
+    }
+  };
+
+  couchGuideDialog.replaceChildren();
+  const loading = document.createElement('p');
+  loading.textContent = 'Cargando guía…';
+  couchGuideDialog.append(loading);
+  couchGuideDialog.showModal();
+  try {
+    data = await request(guideUrl(gameKey));
+    renderDialog();
+  } catch (error) {
+    couchGuideDialog.close();
+    notifyError(error);
+  }
+}
+
+function syncCouchGuideAction() {
+  const sheet = document.querySelector('#couch .couch-sheet:not([hidden])');
+  if (!sheet) return;
+  const actions = sheet.querySelector('.couch-actions');
+  if (!actions || actions.querySelector('[data-action="guide"]')) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'couch-action';
+  btn.dataset.action = 'guide';
+  btn.textContent = 'Guía y pistas';
+  btn.onclick = () => openCouchGuide(sheet.dataset.key);
+  const backBtn = actions.querySelector('[data-action="back"]');
+  if (backBtn) actions.insertBefore(btn, backBtn);
+  else actions.append(btn);
 }
 
 export function setup() {
   loadGuideSummary();
   window.addEventListener('gml-guides', (event) => applyGuideSummary(event.detail));
   const isTile = (node) =>
-    node.nodeType === 1 && !node.classList.contains('guide-poster-badge') && !node.closest('.guide-poster-badge');
+    node.nodeType === 1 &&
+    !node.classList.contains('guide-poster-badge') &&
+    !node.classList.contains('guide-continue-note') &&
+    !node.closest('.guide-poster-badge, .guide-continue-note');
   new MutationObserver((changes) => {
-    if (!guideSummary.withGuide.size) return;
     if (changes.some((change) => [...change.addedNodes].some(isTile))) paintGuideBadges();
-  }).observe(document.querySelector('main') ?? document.body, { childList: true, subtree: true });
+    syncCouchGuideAction();
+  }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+}
+
+export async function openGuideOverlayForGame(game, { inactive = false, toggle = false } = {}) {
+  try {
+    const result = await request(
+      guideUrl(game.key) + '/overlay',
+      jsonRequest('POST', {
+        ...(inactive ? { inactive: true } : {}),
+        ...(toggle ? { toggle: true } : {})
+      })
+    );
+    if (result.opened === 'browser' && result.url && !inactive) {
+      window.open(result.url, 'viciodromo-guide-overlay', 'width=440,height=640');
+    }
+    return result;
+  } catch (error) {
+    if (!inactive) notifyError(error);
+    return null;
+  }
 }
 
 export async function openGuideForGame(game, { url = null, display = null, inactive = false } = {}) {
@@ -449,8 +836,12 @@ export async function loadGuideTab(panel, game) {
   panel.dataset.guideKey = game.key;
   panel.innerHTML = '<div class="detail-loading"><span class="skeleton"></span></div>';
   let data;
+  let companionState = null;
   try {
-    data = await request(guideUrl(game.key));
+    [data, companionState] = await Promise.all([
+      request(guideUrl(game.key)),
+      request('/api/guides/companion').catch(() => null)
+    ]);
   } catch (error) {
     if (panel.dataset.guideKey !== game.key || !panel.isConnected) return;
     const msg = document.createElement('p');
@@ -482,9 +873,13 @@ export async function loadGuideTab(panel, game) {
   const showOriginalSections = new Set();
 
   const reloadTab = async (keepSectionId = null) => {
-    const fresh = await request(guideUrl(game.key));
+    const [fresh, freshCompanion] = await Promise.all([
+      request(guideUrl(game.key)),
+      request('/api/guides/companion').catch(() => companionState)
+    ]);
     if (panel.dataset.guideKey !== game.key || !panel.isConnected) return;
     data = fresh;
+    companionState = freshCompanion;
     if (keepSectionId && data.activeGuide?.sections?.some((s) => s.id === keepSectionId)) {
       selectedSectionId = keepSectionId;
     } else if (!data.activeGuide?.sections?.some((s) => s.id === selectedSectionId)) {
@@ -499,6 +894,7 @@ export async function loadGuideTab(panel, game) {
     clearSectionBtn.hidden = !data.progress.currentSection;
     updateSubtitle();
     renderOfflineSection();
+    renderCompanionSection();
     renderLinks();
     renderNotes();
   };
@@ -1679,6 +2075,191 @@ export async function loadGuideTab(panel, game) {
   sectionForm.append(sectionLabel, sectionInput, saveSectionBtn, clearSectionBtn);
   progressCard.append(sectionForm);
 
+  // ── 2b. Jugar con la guía al lado (ventana flotante, QR celular y atajos) ──
+  const companionCard = document.createElement('section');
+  companionCard.className = 'guide-card guide-companion-card';
+
+  function renderCompanionSection() {
+    companionCard.replaceChildren();
+    const head = document.createElement('div');
+    head.className = 'guide-section-head';
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Jugar con la guía al lado';
+    const help = document.createElement('p');
+    help.className = 'helper-text';
+    help.textContent =
+      'Usá la ventana flotante en 1 pantalla (en ventana sin bordes; en pantalla completa exclusiva Windows la tapa) o abrí la guía en tu celular dentro de la red local.';
+    head.append(h3, help);
+    companionCard.append(head);
+
+    const actions = document.createElement('div');
+    actions.className = 'guide-companion-actions';
+    const overlayBtn = document.createElement('button');
+    overlayBtn.type = 'button';
+    overlayBtn.className = 'button small';
+    overlayBtn.innerHTML = icon('layers') + '<span>Ventana flotante</span>';
+    overlayBtn.onclick = () => openGuideOverlayForGame(game);
+
+    const lanForThisGame = companionState?.lan?.active && companionState.lan.gameKey === game.key;
+    const qrBtn = document.createElement('button');
+    qrBtn.type = 'button';
+    qrBtn.className = 'button small';
+    qrBtn.innerHTML =
+      icon('phone') + '<span>' + (lanForThisGame ? 'Apagar guía en el celular' : 'En el celular (QR)') + '</span>';
+    qrBtn.onclick = async () => {
+      qrBtn.disabled = true;
+      try {
+        if (lanForThisGame) {
+          await request('/api/guides/lan/stop', { method: 'POST' });
+          notify('Servidor celular apagado.', { type: 'info' });
+        } else {
+          await request('/api/guides/lan/start', jsonRequest('POST', { key: game.key }));
+          notify('Código QR listo para leer en el celular.', { type: 'success' });
+        }
+        companionState = await request('/api/guides/companion');
+        renderCompanionSection();
+      } catch (error) {
+        notifyError(error);
+      } finally {
+        qrBtn.disabled = false;
+      }
+    };
+    actions.append(overlayBtn, qrBtn);
+    companionCard.append(actions);
+
+    if (lanForThisGame && companionState.lan) {
+      const lan = companionState.lan;
+      const qrBox = document.createElement('div');
+      qrBox.className = 'guide-qr-box';
+      if (!lan.paired && lan.qr) qrBox.append(buildQrSvgElement(lan.qr));
+      const info = document.createElement('div');
+      info.className = 'guide-qr-info';
+      const st = document.createElement('p');
+      st.textContent = lan.paired
+        ? 'Celular vinculado. El acceso usa una sesión propia y se apaga al cerrar el juego.'
+        : 'Escaneá este código con la cámara de tu celular (misma red Wi-Fi). El enlace sirve para una sola vinculación.';
+      info.append(st);
+      if (lan.url) {
+        const urlEl = document.createElement('code');
+        urlEl.className = 'guide-qr-url';
+        urlEl.textContent = lan.url;
+        info.append(urlEl);
+      }
+      const stopBtn = document.createElement('button');
+      stopBtn.type = 'button';
+      stopBtn.className = 'button small';
+      stopBtn.textContent = 'Detener servidor celular';
+      stopBtn.onclick = async () => {
+        await request('/api/guides/lan/stop', { method: 'POST' });
+        companionState = await request('/api/guides/companion');
+        renderCompanionSection();
+      };
+      info.append(stopBtn);
+      qrBox.append(info);
+      companionCard.append(qrBox);
+    }
+
+    const details = document.createElement('details');
+    details.className = 'guide-ai-box';
+    const sum = document.createElement('summary');
+    sum.textContent = 'Transparencia y atajos globales';
+    const form = document.createElement('form');
+    form.className = 'guide-companion-form';
+    const opacityPct = Math.round((Number(companionState?.opacity) || 0.92) * 100);
+    const opWrap = document.createElement('div');
+    opWrap.className = 'guide-overlay-opacity';
+    const opLbl = document.createElement('label');
+    opLbl.htmlFor = uid + '-comp-opacity';
+    opLbl.textContent = 'Transparencia: ' + opacityPct + '%';
+    const opRange = document.createElement('input');
+    opRange.id = uid + '-comp-opacity';
+    opRange.type = 'range';
+    opRange.min = '35';
+    opRange.max = '100';
+    opRange.value = String(opacityPct);
+    opRange.oninput = () => {
+      opLbl.textContent = 'Transparencia: ' + opRange.value + '%';
+    };
+    opWrap.append(opLbl, opRange);
+
+    const scToggleWrap = document.createElement('label');
+    scToggleWrap.className = 'guide-future-toggle';
+    const scEnabled = document.createElement('input');
+    scEnabled.type = 'checkbox';
+    scEnabled.checked = companionState?.shortcutsEnabled !== false;
+    const scEnabledTxt = document.createElement('span');
+    scEnabledTxt.textContent = 'Activar atajos globales mientras jugás';
+    scToggleWrap.append(scEnabled, scEnabledTxt);
+
+    const grid = document.createElement('div');
+    grid.className = 'guide-companion-grid';
+    const f1 = document.createElement('div');
+    f1.className = 'guide-companion-field';
+    const l1 = document.createElement('label');
+    l1.htmlFor = uid + '-sc-toggle';
+    l1.textContent = 'Mostrar / ocultar ventana flotante';
+    const i1 = document.createElement('input');
+    i1.id = uid + '-sc-toggle';
+    i1.type = 'text';
+    i1.value = companionState?.toggleShortcut ?? 'CommandOrControl+Alt+G';
+    f1.append(l1, i1);
+
+    const f2 = document.createElement('div');
+    f2.className = 'guide-companion-field';
+    const l2 = document.createElement('label');
+    l2.htmlFor = uid + '-sc-hint';
+    l2.textContent = 'Pedir «Otra pista» sin salir del juego';
+    const i2 = document.createElement('input');
+    i2.id = uid + '-sc-hint';
+    i2.type = 'text';
+    i2.value = companionState?.nextHintShortcut ?? 'CommandOrControl+Alt+H';
+    f2.append(l2, i2);
+    grid.append(f1, f2);
+
+    const saveRow = document.createElement('div');
+    saveRow.className = 'guide-note-actions';
+    const saveCompBtn = document.createElement('button');
+    saveCompBtn.type = 'submit';
+    saveCompBtn.className = 'button small';
+    saveCompBtn.textContent = 'Guardar ajustes';
+    saveRow.append(saveCompBtn);
+
+    if (companionState?.shortcuts?.supported) {
+      const scNote = document.createElement('small');
+      scNote.className = 'helper-text';
+      const issues = [companionState.shortcuts.toggle, companionState.shortcuts.nextHint]
+        .filter((s) => s?.accelerator && !s.registered && s.error)
+        .map((s) => s.accelerator + ': ' + s.error);
+      scNote.textContent = issues.length ? issues.join(' ') : 'Atajos globales listos.';
+      saveRow.append(scNote);
+    }
+
+    form.append(opWrap, scToggleWrap, grid, saveRow);
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      saveCompBtn.disabled = true;
+      try {
+        companionState = await request(
+          '/api/guides/companion/settings',
+          jsonRequest('PUT', {
+            opacity: Number(opRange.value) / 100,
+            shortcutsEnabled: scEnabled.checked,
+            toggleShortcut: i1.value,
+            nextHintShortcut: i2.value
+          })
+        );
+        renderCompanionSection();
+        notify('Ajustes de guía al lado guardados.', { type: 'success' });
+      } catch (error) {
+        notifyError(error);
+      } finally {
+        saveCompBtn.disabled = false;
+      }
+    };
+    details.append(sum, form);
+    companionCard.append(details);
+  }
+
   // ── 3. Fuentes de guía (enlaces directos) ──
   const linksSection = document.createElement('section');
   linksSection.className = 'guide-card';
@@ -1994,10 +2575,11 @@ export async function loadGuideTab(panel, game) {
   }
 
   renderOfflineSection();
+  renderCompanionSection();
   renderLinks();
   renderNotes();
   notesSection.append(noteForm, notesList);
 
-  root.append(offlineCard, progressCard, linksSection, notesSection);
+  root.append(offlineCard, progressCard, companionCard, linksSection, notesSection);
   panel.replaceChildren(root);
 }

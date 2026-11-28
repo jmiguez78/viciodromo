@@ -201,7 +201,10 @@ export function parseSteamNews(json) {
 // Reglas simples sobre título y texto, en inglés y en español. El orden importa: una oferta que menciona un parche
 // sigue siendo una oferta.
 const RULES = [
-  ['offer', /\b(on sale|discount|descuento|rebajad[oa]s?|rebajas?|ofertas?|\d+\s?% off|precio especial)\b/],
+  [
+    'offer',
+    /\b(on sale|discount|descuento|rebajad[oa]s?|rebajas?|ofertas?|\d+\s?% off|precio especial|black friday|cyber monday|(?:summer|winter|autumn|spring|holiday|lunar new year|weekend|midweek|publisher) sale|sale is (?:here|live|on)|sale\b.*\b(?:until|ends))/
+  ],
   [
     'update',
     /\b(patch(?:es)?|hotfix|update|updated|changelog|parches?|actualizaci[oó]n|notas del parche|patch notes|v\d+\.\d+|versi[oó]n \d)/
@@ -223,7 +226,7 @@ export function classify({ title = '', text = '', tags = [] }, layer = 'official
   if (layer === 'press') return 'press';
   if (layer === 'community') return 'community';
   if (tags.includes('patchnotes')) return 'update';
-  const haystack = (title + ' ' + text.slice(0, 300)).toLowerCase();
+  const haystack = (title + ' ' + text.slice(0, 600)).toLowerCase();
   return RULES.find(([, rule]) => rule.test(haystack))?.[0] ?? 'announcement';
 }
 

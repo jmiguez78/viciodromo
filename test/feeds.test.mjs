@@ -141,6 +141,8 @@ test('classify reconoce actualizaciones, contenido, eventos, ofertas y anuncios'
   assert.equal(classify({ title: 'Free weekend starts now' }), 'event');
   assert.equal(classify({ title: '50% off during the Autumn Sale, patch included' }), 'offer');
   assert.equal(classify({ title: 'Release date revealed' }), 'announcement');
+  assert.equal(classify({ title: 'Le Mans Ultimate Black Friday Sale is here!' }), 'offer');
+  assert.equal(classify({ title: 'Ya sale el 5 de diciembre' }), 'announcement');
   assert.equal(classify({ title: 'Lo que sea' }, 'press'), 'press');
   assert.equal(classify({ title: 'Lo que sea' }, 'local'), 'update');
   assert.equal(classify({ title: 'Patch 1.2 is out' }, 'community'), 'community');

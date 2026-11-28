@@ -403,7 +403,7 @@ export function createNews({
   async function fetchSource(source) {
     if (source.kind === 'steam') {
       const data = await get(
-        `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${source.appid}&count=15&maxlength=1500&format=json`,
+        `https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${source.appid}&count=20&maxlength=1500&feeds=steam_community_announcements&format=json`,
         'json'
       );
       return parseSteamNews(data);
@@ -730,7 +730,9 @@ export function createNews({
             if (!current.follows[key]) return current;
             current.follows[key] = { ...current.follows[key], ...follow, mode, sources, checkedAt: at };
             const local = await localUpdate(current, game, at);
-            added += merge(current, key, [...incoming, ...local]);
+            // Un juego que todavía no tiene ninguna novedad recibe la primera tanda (las cinco más recientes), aunque
+            // sean de antes de seguirlo: pasa si al seguirlo una fuente no respondió.
+            added += merge(current, key, [...incoming, ...local], { initial: !current.items[key]?.length });
             return current;
           });
         }
@@ -833,9 +835,12 @@ export function createNews({
       .filter((follow) => !follow.mutedUntil)
       .flatMap((follow) => {
         const since = store.read[follow.key] ?? '';
-        return visible(store, follow.key)
-          .filter((item) => item.date >= after)
-          .map((item) => ({ ...item, unread: item.foundAt > since, game: { key: follow.key, name: follow.name } }));
+        return (
+          visible(store, follow.key)
+            // Con un juego elegido se ve todo lo guardado; sin filtro, sólo los últimos 60 días.
+            .filter((item) => key === follow.key || item.date >= after)
+            .map((item) => ({ ...item, unread: item.foundAt > since, game: { key: follow.key, name: follow.name } }))
+        );
       })
       .sort((a, b) => b.date.localeCompare(a.date));
     const types = [...new Set(items.map((item) => item.type))];

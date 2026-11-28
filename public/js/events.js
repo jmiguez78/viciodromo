@@ -65,6 +65,10 @@ export function setup() {
   source.addEventListener('news', (event) => {
     window.dispatchEvent(new CustomEvent('gml-news', { detail: JSON.parse(event.data) }));
   });
+  // Guías sin conexión agregadas, quitadas o detectadas.
+  source.addEventListener('guides', (event) => {
+    window.dispatchEvent(new CustomEvent('gml-guides', { detail: JSON.parse(event.data) }));
+  });
   // No se pudo llevar un juego al monitor elegido: se abrió donde Windows quiso.
   source.addEventListener('display', (event) => {
     notify(describeDisplayFailure(JSON.parse(event.data)), {
